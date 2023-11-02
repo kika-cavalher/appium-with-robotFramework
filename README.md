@@ -3,7 +3,7 @@
 
 <h1 align="center">
   <br>
-  <img src="C:\automationTests\twp\app\appium.png" alt="Training Wheels Protocol App" height="60" width="" style= "background-color: #082767">
+  <img src="./app/appium.png" alt="Training Wheels Protocol App">
   <br><br>
 </h1>
 
