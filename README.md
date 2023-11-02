@@ -11,7 +11,7 @@
 
 <p align="center"> 
     <img src="https://img.shields.io/badge/Robot%20Framework-3CB371?style=for-the-badge&logo=robotframework&logoColor=white">
-    <img src="https://kobiton.com/wp-content/uploads/2023/09/Appium-1.17.0.png" height="30">
+    <img src="https://img.shields.io/badge/Appium-4B0082?style=for-the-badge&logo=appium&logoColor=white">
 </p align="center">
 
 ## 💻 Pre-requisite
