@@ -1,9 +1,9 @@
-# robot_framework--getgeek
+# Appium+robot_framework--Training Wheels Protocol
 
 
 <h1 align="center">
   <br>
-  <!-- <img src="https://web-geek.fly.dev/static/media/logo.7ca85960.svg" alt="Getgeeks App" height="60" width="" style= "background-color: #082767"> -->
+  <img src="C:\automationTests\twp\app\appium.png" alt="Training Wheels Protocol App" height="60" width="" style= "background-color: #082767">
   <br><br>
 </h1>
 
@@ -26,7 +26,7 @@ Before starting, you need to have on your computer:
 - [X] Android Studio
 - [X] Appium Server GUI + Appium Inspector
 
-**/!\You will need to copy the *tools* folder from this file: http://dl-ssl.google.com/android/repository/sdk-tools-windows-4333796.zip**
+/!\You will need to copy the *tools* folder from this file: http://dl-ssl.google.com/android/repository/sdk-tools-windows-4333796.zip**
 **/!\And you will also need to configure the environment variables**
 
 ####To make sure that Appium is correctly installed in cmder, run the command:####
