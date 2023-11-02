@@ -11,7 +11,7 @@
 
 <p align="center"> 
     <img src="https://img.shields.io/badge/Robot%20Framework-3CB371?style=for-the-badge&logo=robotframework&logoColor=white">
-    <img src="https://img.shields.io/badge/Python-239120?style=for-the-badge&logo=python&logoColor=white">
+    <img src="https://kobiton.com/wp-content/uploads/2023/09/Appium-1.17.0.png" height="30">
 </p align="center">
 
 ## 💻 Pre-requisite
@@ -26,10 +26,12 @@ Before starting, you need to have on your computer:
 - [X] Android Studio
 - [X] Appium Server GUI + Appium Inspector
 
-**/!\You will need to copy the *tools* folder from this file: http://dl-ssl.google.com/android/repository/sdk-tools-windows-4333796.zip**
-**/!\And you will also need to configure the environment variables**
+### Other important settings to make:
+- [X] Copy the *tools folder from this file: http://dl-ssl.google.com/android/repository/sdk-tools-windows-4333796.zip
+- [X] You will also need to configure the environment variables
+- [X] Don't forget to configure the mandatory capability information to access the system (basic file)
 
-####To make sure that Appium is correctly installed in cmder, run the command:####
+<h4>To make sure that Appium is correctly installed in cmder, run the command:<h4>
 
 ```sh
 appium-doctor --android
@@ -46,9 +48,9 @@ pip install robotframework-appiumlibrary
 ### Install Vscode extensions too for better viewing
 
 <img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Robocorp <br>
-<img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Robot Framework Language Server
-<img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Thunder Client
-<img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Hyper Term Theme
+<img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Robot Framework Language Server <br>
+<img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Thunder Client <br>
+<img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Hyper Term Theme <br>
 
 <!--<p align="center">
   <kbd>
