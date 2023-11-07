@@ -3,6 +3,14 @@
 Resource                                            ../basic.robot
 
 *** Keywords ***
+Open Session
+    Open Application with Appium
+    Enter in Application
+    Set Appium Timeout                      5
+
+Close Session
+    Close Application with Appium
+
 Enter in Application
     Click Text                                      ${btn_start} 
 

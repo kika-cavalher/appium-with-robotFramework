@@ -28,7 +28,7 @@ Before starting, you need to have on your computer:
 
 ### Other important settings to make:
 - [X] Copy the *tools folder from this file: http://dl-ssl.google.com/android/repository/sdk-tools-windows-4333796.zip
-- [X] You will also need to configure the environment variables
+- [X] You will also need to configure the environment variables (To find out the udid just type in cmeder: adb devices)
 - [X] Don't forget to configure the mandatory capability information to access the system (basic file)
 
 <h4>To make sure that Appium is correctly installed in cmder, run the command:<h4>
@@ -51,6 +51,14 @@ pip install robotframework-appiumlibrary
 <img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Robot Framework Language Server <br>
 <img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Thunder Client <br>
 <img src="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-64.png" srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x" width="20" class=" lazyloaded" data-srcset="https://cdn1.iconfinder.com/data/icons/material-core/23/extension-256.png 1x, https://cdn1.iconfinder.com/data/icons/material-core/23/extension-512.png 2x"> Hyper Term Theme <br>
+
+## 💻 To start 
+Start the machine for testing (every time):
+
+- [X] Cmeder (write in the command line: appium)
+- [X] Open Android Studio (Open Device Manager and start the virtual machine)
+- [X] Appium Server GUI + Appium Inspector (Open both systems and start session)
+
 
 <!--<p align="center">
   <kbd>
