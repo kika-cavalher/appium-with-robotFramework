@@ -3,18 +3,6 @@
 Resource                                            ../basic.robot
 
 *** Keywords ***
-Open Session
-    Open Application with Appium
-    Enter in Application
-    Set Appium Timeout                      5
-
-Close Session
-    Close Application with Appium
-
-Enter in Application
-    Click Text                                      ${btn_start} 
-
-
 Enter Navegation Menu
     Wait Until Element Is Visible                   ${btn_menu}
     Click Element                                   ${btn_menu}
@@ -27,7 +15,7 @@ Access page via menu
     Wait Until Element Is Visible                   ${page_title}
     Element Text Should Be                          ${page_title}                ${page}    
 
-Validate if is right text
+Validate if is right page
     [Arguments]                                     ${text}
 
     Wait Until Page Contains                        ${text}
