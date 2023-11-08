@@ -105,7 +105,7 @@ criteria is io.qaninja.android.twp:id/navView</msg>
 </kw>
 <status status="PASS" starttime="20231102 18:34:55.526" endtime="20231102 18:34:58.038"/>
 </kw>
-<kw name="Access page via menu" library="meta">
+<kw name="Access the page using the menu" library="meta">
 <arg>AVENGERS</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>
@@ -198,7 +198,7 @@ xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation draw
 </kw>
 <status status="PASS" starttime="20231102 18:35:15.928" endtime="20231102 18:35:18.240"/>
 </kw>
-<kw name="Access page via menu" library="meta">
+<kw name="Access the page using the menu" library="meta">
 <arg>FORMS</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>
@@ -290,7 +290,7 @@ Please check https://github.com/appium/appium/blob/master/docs/en/writing-runnin
 </kw>
 <status status="PASS" starttime="20231102 18:35:36.056" endtime="20231102 18:35:38.407"/>
 </kw>
-<kw name="Access page via menu" library="meta">
+<kw name="Access the page using the menu" library="meta">
 <arg>DIALOGS</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>
@@ -383,7 +383,7 @@ xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation draw
 </kw>
 <status status="PASS" starttime="20231102 18:35:58.662" endtime="20231102 18:36:01.040"/>
 </kw>
-<kw name="Access page via menu" library="meta">
+<kw name="Access the page using the menu" library="meta">
 <arg>SEEK BAR</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>
@@ -475,7 +475,7 @@ Please check https://github.com/appium/appium/blob/master/docs/en/writing-runnin
 </kw>
 <status status="PASS" starttime="20231102 18:36:18.090" endtime="20231102 18:36:20.475"/>
 </kw>
-<kw name="Access page via menu" library="meta">
+<kw name="Access the page using the menu" library="meta">
 <arg>INPUTS</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>
@@ -567,7 +567,7 @@ Please check https://github.com/appium/appium/blob/master/docs/en/writing-runnin
 </kw>
 <status status="PASS" starttime="20231102 18:36:38.140" endtime="20231102 18:36:40.558"/>
 </kw>
-<kw name="Access page via menu" library="meta">
+<kw name="Access the page using the menu" library="meta">
 <arg>BOTÕES</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>

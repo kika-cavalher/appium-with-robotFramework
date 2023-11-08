@@ -8,7 +8,7 @@ Enter Navegation Menu
     Click Element                                   ${btn_menu}
     Wait Until Element Is Visible                   ${element_menu}
 
-Access page via menu
+Access the page using the menu
     [Arguments]                                     ${page}
 
     Click Text                                      ${page}

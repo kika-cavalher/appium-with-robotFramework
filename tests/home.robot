@@ -16,30 +16,30 @@ home screen
 
 Navegation Menu page avengers
     Enter Navegation Menu
-    Access page via menu                    AVENGERS
+    Access the page using the menu                    AVENGERS
     Validate if is right page               AVENGERS
 
 Navegation Menu page forms
     Enter Navegation Menu
-    Access page via menu                    FORMS
+    Access the page using the menu                    FORMS
     Validate if is right page               FORMS
 
 Navegation Menu page Dialogs
     Enter Navegation Menu
-    Access page via menu                    DIALOGS
+    Access the page using the menu                    DIALOGS
     Validate if is right page               DIALOGS
 
 Navegation Menu page seekBar
     Enter Navegation Menu
-    Access page via menu                    SEEK BAR
+    Access the page using the menu                    SEEK BAR
     Validate if is right page               SEEK BAR
 
 Navegation Menu page inputs
     Enter Navegation Menu
-    Access page via menu                    INPUTS
+    Access the page using the menu                    INPUTS
     Validate if is right page               INPUTS
 
 Navegation Menu page botoes
     Enter Navegation Menu
-    Access page via menu                    BOTÕES
+    Access the page using the menu                    BOTÕES
     Validate if is right page               BOTÕES

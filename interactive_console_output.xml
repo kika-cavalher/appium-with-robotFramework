@@ -3,9 +3,9 @@
 <suite id="s1" name="Robot Interactive Console" source="c:\Users\erica\.vscode\extensions\robocorp.robotframework-lsp-1.11.0\src\robotframework_ls\vendored\robotframework_interactive\robot_interactive_console.robot">
 <test id="s1-t1" name="Default Task/Test" line="5">
 <kw name="Interpreter Main Loop" library="MainLoop">
-<kw name="Access page via menu">
+<kw name="Access the page using the menu">
 <arg>INPUTS</arg>
-<msg timestamp="20231107 15:33:06.945" level="FAIL">No keyword with name 'Access page via menu' found.</msg>
+<msg timestamp="20231107 15:33:06.945" level="FAIL">No keyword with name 'Access the page using the menu' found.</msg>
 <status status="FAIL" starttime="20231107 15:33:06.944" endtime="20231107 15:33:06.945"/>
 </kw>
 <status status="PASS" starttime="20231107 15:33:05.138" endtime="20231107 15:33:09.973"/>
