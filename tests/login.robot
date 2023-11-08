@@ -12,6 +12,7 @@ Test Teardown                               Close Session
 
 *** Test Cases ***
 Login Success
+    Open Forms
     Open Login
     Fill Login Forms                     
     Validate Message                         ${login_success}

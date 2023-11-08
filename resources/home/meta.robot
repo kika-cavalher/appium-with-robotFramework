@@ -13,7 +13,7 @@ Access the page using the menu
 
     Click Text                                      ${page}
     Wait Until Element Is Visible                   ${page_title}
-    Element Text Should Be                          ${page_title}                ${page}    
+    AppiumLibrary.Element Text Should Be            ${page_title}                ${page}    
 
 Validate if is right page
     [Arguments]                                     ${text}

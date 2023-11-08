@@ -1,24 +1,39 @@
 
 *** Settings ***
-Resource                                            ../basic.robot
+Resource                                                   ../basic.robot
+Library    XML
 
 *** Keywords ***
-Open Login
+Open Inputs
     Enter Navegation Menu
-    Access the page using the menu                    FORMS
-    Validate if is right page               FORMS
-    Click Text                              ${open_login}
-    Validate if is right page               ${text_login}
+    Access the page using the menu                         INPUTS
+    Validate if is right page                              INPUTS
+
+Button Selected language    
+    [Arguments]                                            ${language}
+    Click Element                                          ${language}
 
 
-Fill Login Forms
-    ${user}                                  Factory Session                    login          
-    
-    Input Text                               ${form_email}                      ${user}[email] 
-    Input Text                               ${form_pass}                       ${user}[pass] 
-    Click Element                            ${btn_enter}
+#RadioButton
+Open RadioButtons
+    Click Text                                             ${text_radioBtn}
+    Validate if is right page                              ${title_radioBtn}
 
-Validate Message
-    [Arguments]                              ${txt}
-    Wait Until Page Contains                 ${txt}
-    
+
+Validate ButtonRadio is Checked
+    [Arguments]                                            ${language}
+
+    Wait Until Element Is Visible                          ${language}
+    AppiumLibrary.Element Attribute Should Match           ${language}              checked         true
+
+#CheckBox
+Open CheckBox
+    Click Text                                             ${text_checkBox}
+    Validate if is right page                              ${title_checkBox}
+
+Validate CheckBox is Checked
+    [Arguments]                                            ${language}
+
+    Wait Until Element Is Visible                          ${fld_checkBox_container}
+    AppiumLibrary.Element Attribute Should Match           ${language}              checked         true
+

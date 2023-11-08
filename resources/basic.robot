@@ -4,6 +4,8 @@ Resource                                    ./home/data.robot
 Resource                                    ./home/meta.robot
 Resource                                    ./login/data.robot
 Resource                                    ./login/meta.robot
+Resource                                    ./InputsPage/data.robot
+Resource                                    ./InputsPage/meta.robot
 Library                                     ./factory/User.py
 
 *** Keywords ***
@@ -26,7 +28,12 @@ Enter in Application
 Open Session
     Open Application with Appium
     Enter in Application
-    Set Appium Timeout                      5
+    Set Appium Timeout                      10
 
 Close Session
     Close Application with Appium
+
+Validate Message
+    [Arguments]                              ${txt}
+    Wait Until Page Contains                 ${txt}
+    
