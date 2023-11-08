@@ -2,6 +2,9 @@
 Library                                     AppiumLibrary
 Resource                                    ./home/data.robot
 Resource                                    ./home/meta.robot
+Resource                                    ./login/data.robot
+Resource                                    ./login/meta.robot
+Library                                     ./factory/User.py
 
 *** Keywords ***
 Open Application with Appium
