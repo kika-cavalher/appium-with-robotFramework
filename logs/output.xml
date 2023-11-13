@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<robot generator="Robot 6.1.1 (Python 3.8.1 on win32)" generated="20231108 17:38:32.084" rpa="false" schemaversion="4">
-<suite id="s1" name="inputsPage" source="C:\automationTests\twp\tests\inputsPage.robot">
-<test id="s1-t1" name="Selected CheckBox Ruby" line="65">
+<robot generator="Robot 6.1.1 (Python 3.8.1 on win32)" generated="20231113 14:04:06.596" rpa="false" schemaversion="4">
+<suite id="s1" name="ButtonsPage" source="C:\automationTests\twp\tests\ButtonsPage.robot">
+<test id="s1-t1" name="Selected Long Button" line="22">
 <kw name="Open Session" library="basic" type="SETUP">
 <kw name="Open Application with Appium" library="basic">
 <kw name="Open Application" library="AppiumLibrary">
@@ -17,1136 +17,175 @@ Please check https://github.com/appium/appium/blob/master/docs/en/writing-runnin
 | remote_url          | Yes    | Appium server url |
 | alias               | no     | alias             |
 | strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:38:32.347" endtime="20231108 17:38:42.650"/>
+<status status="PASS" starttime="20231113 14:04:06.856" endtime="20231113 14:04:15.329"/>
 </kw>
 <kw name="Wait Until Page Contains" library="AppiumLibrary">
 <arg>${btn_start}</arg>
 <arg>5</arg>
 <doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:38:42.650" endtime="20231108 17:38:47.188"/>
+<status status="PASS" starttime="20231113 14:04:15.329" endtime="20231113 14:04:19.621"/>
 </kw>
-<status status="PASS" starttime="20231108 17:38:32.346" endtime="20231108 17:38:47.189"/>
+<status status="PASS" starttime="20231113 14:04:06.856" endtime="20231113 14:04:19.621"/>
 </kw>
 <kw name="Enter in Application" library="basic">
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${btn_start}</arg>
 <doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:38:48.036" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:38:47.189" endtime="20231108 17:38:48.037"/>
+<msg timestamp="20231113 14:04:20.105" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
+<status status="PASS" starttime="20231113 14:04:19.622" endtime="20231113 14:04:20.105"/>
 </kw>
-<status status="PASS" starttime="20231108 17:38:47.189" endtime="20231108 17:38:48.037"/>
+<status status="PASS" starttime="20231113 14:04:19.622" endtime="20231113 14:04:20.105"/>
 </kw>
 <kw name="Set Appium Timeout" library="AppiumLibrary">
 <arg>10</arg>
 <doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:38:48.037" endtime="20231108 17:38:48.037"/>
+<status status="PASS" starttime="20231113 14:04:20.106" endtime="20231113 14:04:20.106"/>
 </kw>
-<status status="PASS" starttime="20231108 17:38:32.346" endtime="20231108 17:38:48.037"/>
+<status status="PASS" starttime="20231113 14:04:06.856" endtime="20231113 14:04:20.106"/>
 </kw>
-<kw name="Open Inputs" library="meta">
+<kw name="Open ButtonsPage" library="meta">
 <kw name="Enter Navegation Menu" library="meta">
 <kw name="Wait Until Element Is Visible" library="AppiumLibrary">
 <arg>${btn_menu}</arg>
 <doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:38:49.509" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]
+<msg timestamp="20231113 14:04:21.310" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]
 xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:38:48.039" endtime="20231108 17:38:49.511"/>
+<status status="PASS" starttime="20231113 14:04:20.107" endtime="20231113 14:04:21.310"/>
 </kw>
 <kw name="Click Element" library="AppiumLibrary">
 <arg>${btn_menu}</arg>
 <doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:38:49.514" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:38:49.638" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:38:49.511" endtime="20231108 17:38:49.638"/>
+<msg timestamp="20231113 14:04:21.312" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
+<msg timestamp="20231113 14:04:21.369" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
+<status status="PASS" starttime="20231113 14:04:21.311" endtime="20231113 14:04:21.369"/>
 </kw>
 <kw name="Wait Until Element Is Visible" library="AppiumLibrary">
 <arg>${element_menu}</arg>
 <doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:38:50.666" level="INFO">criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:38:49.639" endtime="20231108 17:38:50.666"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:48.039" endtime="20231108 17:38:50.666"/>
-</kw>
-<kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${page}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:38:50.775" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:38:50.666" endtime="20231108 17:38:50.775"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:38:51.753" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:38:50.775" endtime="20231108 17:38:51.753"/>
-</kw>
-<kw name="Element Text Should Be" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<arg>${page}</arg>
-<doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:38:51.755" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:38:51.786" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:38:51.754" endtime="20231108 17:38:51.786"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:50.666" endtime="20231108 17:38:51.786"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:38:51.786" endtime="20231108 17:38:51.959"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:51.786" endtime="20231108 17:38:51.959"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:48.037" endtime="20231108 17:38:51.960"/>
-</kw>
-<kw name="Open CheckBox" library="meta">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:38:52.101" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:38:51.961" endtime="20231108 17:38:52.101"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:38:52.102" endtime="20231108 17:38:53.060"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:52.102" endtime="20231108 17:38:53.060"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:51.960" endtime="20231108 17:38:53.060"/>
-</kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_ruby}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:38:53.062" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Ruby "]'.</msg>
-<msg timestamp="20231108 17:38:53.158" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Ruby "]</msg>
-<status status="PASS" starttime="20231108 17:38:53.061" endtime="20231108 17:38:53.158"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:53.060" endtime="20231108 17:38:53.158"/>
-</kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_ruby}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:38:54.132" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:38:53.159" endtime="20231108 17:38:54.132"/>
-</kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:38:54.193" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Ruby "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:38:54.193" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Ruby "]</msg>
-<status status="PASS" starttime="20231108 17:38:54.132" endtime="20231108 17:38:54.193"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:53.158" endtime="20231108 17:38:54.193"/>
-</kw>
-<kw name="Close Session" library="basic" type="TEARDOWN">
-<kw name="Close Application with Appium" library="basic">
-<kw name="Close All Applications" library="AppiumLibrary">
-<doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:38:54.194" endtime="20231108 17:38:54.659"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:54.194" endtime="20231108 17:38:54.660"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:54.194" endtime="20231108 17:38:54.660"/>
-</kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:38:32.346" endtime="20231108 17:38:54.660"/>
-</test>
-<test id="s1-t2" name="Selected CheckBox Python" line="72">
-<kw name="Open Session" library="basic" type="SETUP">
-<kw name="Open Application with Appium" library="basic">
-<kw name="Open Application" library="AppiumLibrary">
-<arg>http://127.0.0.1:4723/wd/hub</arg>
-<arg>automationName=UiAutomator2</arg>
-<arg>platformName=Android</arg>
-<arg>deviceName=Android Emulator</arg>
-<arg>app=C:/automationTests/twp/app/twp.apk</arg>
-<doc>Opens a new application to given Appium server.
-Capabilities of appium server, Android and iOS,
-Please check https://github.com/appium/appium/blob/master/docs/en/writing-running-appium/server-args.md
-| *Option*            | *Man.* | *Description*     |
-| remote_url          | Yes    | Appium server url |
-| alias               | no     | alias             |
-| strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:38:54.663" endtime="20231108 17:39:06.521"/>
-</kw>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<arg>5</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:06.521" endtime="20231108 17:39:10.629"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:54.662" endtime="20231108 17:39:10.630"/>
-</kw>
-<kw name="Enter in Application" library="basic">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:11.589" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:39:10.631" endtime="20231108 17:39:11.590"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:10.631" endtime="20231108 17:39:11.590"/>
-</kw>
-<kw name="Set Appium Timeout" library="AppiumLibrary">
-<arg>10</arg>
-<doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:39:11.591" endtime="20231108 17:39:11.591"/>
-</kw>
-<status status="PASS" starttime="20231108 17:38:54.662" endtime="20231108 17:39:11.591"/>
-</kw>
-<kw name="Open Inputs" library="meta">
-<kw name="Enter Navegation Menu" library="meta">
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:12.831" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:39:11.593" endtime="20231108 17:39:12.831"/>
-</kw>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:39:12.835" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:39:12.943" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:39:12.832" endtime="20231108 17:39:12.943"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${element_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:13.964" level="INFO">criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:39:12.943" endtime="20231108 17:39:13.965"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:11.592" endtime="20231108 17:39:13.965"/>
-</kw>
-<kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${page}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:14.103" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:39:13.965" endtime="20231108 17:39:14.103"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:15.067" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:39:14.104" endtime="20231108 17:39:15.067"/>
-</kw>
-<kw name="Element Text Should Be" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<arg>${page}</arg>
-<doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:39:15.069" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:39:15.101" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:39:15.068" endtime="20231108 17:39:15.101"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:13.965" endtime="20231108 17:39:15.101"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:15.102" endtime="20231108 17:39:15.217"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:15.101" endtime="20231108 17:39:15.217"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:11.592" endtime="20231108 17:39:15.217"/>
-</kw>
-<kw name="Open CheckBox" library="meta">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:15.349" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:39:15.218" endtime="20231108 17:39:15.349"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:15.351" endtime="20231108 17:39:16.352"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:15.349" endtime="20231108 17:39:16.352"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:15.218" endtime="20231108 17:39:16.352"/>
-</kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_python}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:39:16.356" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Python "]'.</msg>
-<msg timestamp="20231108 17:39:16.440" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Python "]</msg>
-<status status="PASS" starttime="20231108 17:39:16.354" endtime="20231108 17:39:16.440"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:16.354" endtime="20231108 17:39:16.440"/>
-</kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_python}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:17.381" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:39:16.442" endtime="20231108 17:39:17.381"/>
-</kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:39:17.452" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Python "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:39:17.452" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Python "]</msg>
-<status status="PASS" starttime="20231108 17:39:17.381" endtime="20231108 17:39:17.452"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:16.441" endtime="20231108 17:39:17.452"/>
-</kw>
-<kw name="Close Session" library="basic" type="TEARDOWN">
-<kw name="Close Application with Appium" library="basic">
-<kw name="Close All Applications" library="AppiumLibrary">
-<doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:39:17.453" endtime="20231108 17:39:18.016"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:17.453" endtime="20231108 17:39:18.016"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:17.453" endtime="20231108 17:39:18.016"/>
-</kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:38:54.661" endtime="20231108 17:39:18.017"/>
-</test>
-<test id="s1-t3" name="Selected CheckBox Java" line="79">
-<kw name="Open Session" library="basic" type="SETUP">
-<kw name="Open Application with Appium" library="basic">
-<kw name="Open Application" library="AppiumLibrary">
-<arg>http://127.0.0.1:4723/wd/hub</arg>
-<arg>automationName=UiAutomator2</arg>
-<arg>platformName=Android</arg>
-<arg>deviceName=Android Emulator</arg>
-<arg>app=C:/automationTests/twp/app/twp.apk</arg>
-<doc>Opens a new application to given Appium server.
-Capabilities of appium server, Android and iOS,
-Please check https://github.com/appium/appium/blob/master/docs/en/writing-running-appium/server-args.md
-| *Option*            | *Man.* | *Description*     |
-| remote_url          | Yes    | Appium server url |
-| alias               | no     | alias             |
-| strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:39:18.021" endtime="20231108 17:39:29.556"/>
-</kw>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<arg>5</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:29.558" endtime="20231108 17:39:34.044"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:18.019" endtime="20231108 17:39:34.044"/>
-</kw>
-<kw name="Enter in Application" library="basic">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:35.034" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:39:34.044" endtime="20231108 17:39:35.034"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:34.044" endtime="20231108 17:39:35.034"/>
-</kw>
-<kw name="Set Appium Timeout" library="AppiumLibrary">
-<arg>10</arg>
-<doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:39:35.034" endtime="20231108 17:39:35.034"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:18.019" endtime="20231108 17:39:35.035"/>
-</kw>
-<kw name="Open Inputs" library="meta">
-<kw name="Enter Navegation Menu" library="meta">
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:36.250" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:39:35.036" endtime="20231108 17:39:36.250"/>
-</kw>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:39:36.253" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:39:36.365" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:39:36.251" endtime="20231108 17:39:36.366"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${element_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:37.408" level="INFO">criteria is io.qaninja.android.twp:id/navView
+<msg timestamp="20231113 14:04:22.363" level="INFO">criteria is io.qaninja.android.twp:id/navView
 criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:39:36.366" endtime="20231108 17:39:37.408"/>
+<status status="PASS" starttime="20231113 14:04:21.370" endtime="20231113 14:04:22.363"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:35.035" endtime="20231108 17:39:37.408"/>
+<status status="PASS" starttime="20231113 14:04:20.107" endtime="20231113 14:04:22.364"/>
 </kw>
 <kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
+<arg>BOTÕES</arg>
 <kw name="Click Text" library="AppiumLibrary">
 <arg>${page}</arg>
 <doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:37.531" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:39:37.409" endtime="20231108 17:39:37.531"/>
+<msg timestamp="20231113 14:04:22.477" level="INFO">xpath criteria: //*[contains(@text,"BOTÕES")]</msg>
+<status status="PASS" starttime="20231113 14:04:22.364" endtime="20231113 14:04:22.477"/>
 </kw>
 <kw name="Wait Until Element Is Visible" library="AppiumLibrary">
 <arg>${page_title}</arg>
 <doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:38.494" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:39:37.531" endtime="20231108 17:39:38.495"/>
+<msg timestamp="20231113 14:04:23.432" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
+<status status="PASS" starttime="20231113 14:04:22.477" endtime="20231113 14:04:23.432"/>
 </kw>
 <kw name="Element Text Should Be" library="AppiumLibrary">
 <arg>${page_title}</arg>
 <arg>${page}</arg>
 <doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:39:38.496" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:39:38.552" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:39:38.495" endtime="20231108 17:39:38.552"/>
+<msg timestamp="20231113 14:04:23.433" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'BOTÕES'.</msg>
+<msg timestamp="20231113 14:04:23.463" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
+<status status="PASS" starttime="20231113 14:04:23.432" endtime="20231113 14:04:23.463"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:37.408" endtime="20231108 17:39:38.552"/>
+<status status="PASS" starttime="20231113 14:04:22.364" endtime="20231113 14:04:23.463"/>
 </kw>
 <kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
+<arg>BOTÕES</arg>
 <kw name="Wait Until Page Contains" library="AppiumLibrary">
 <arg>${text}</arg>
 <doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:38.553" endtime="20231108 17:39:38.677"/>
+<status status="PASS" starttime="20231113 14:04:23.463" endtime="20231113 14:04:23.504"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:38.552" endtime="20231108 17:39:38.677"/>
+<status status="PASS" starttime="20231113 14:04:23.463" endtime="20231113 14:04:23.504"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:35.035" endtime="20231108 17:39:38.677"/>
+<status status="PASS" starttime="20231113 14:04:20.106" endtime="20231113 14:04:23.504"/>
 </kw>
-<kw name="Open CheckBox" library="meta">
+<kw name="Open LongButtons" library="meta">
 <kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
+<arg>${menu_btnLong}</arg>
 <doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:38.849" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:39:38.679" endtime="20231108 17:39:38.850"/>
+<msg timestamp="20231113 14:04:23.581" level="INFO">xpath criteria: //*[contains(@text,"CLIQUE LONGO")]</msg>
+<status status="PASS" starttime="20231113 14:04:23.505" endtime="20231113 14:04:23.581"/>
 </kw>
 <kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
+<arg>${title_btnLong}</arg>
 <kw name="Wait Until Page Contains" library="AppiumLibrary">
 <arg>${text}</arg>
 <doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:38.851" endtime="20231108 17:39:40.112"/>
+<status status="PASS" starttime="20231113 14:04:23.582" endtime="20231113 14:04:24.403"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:38.850" endtime="20231108 17:39:40.112"/>
+<status status="PASS" starttime="20231113 14:04:23.581" endtime="20231113 14:04:24.403"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:38.679" endtime="20231108 17:39:40.112"/>
+<status status="PASS" starttime="20231113 14:04:23.504" endtime="20231113 14:04:24.403"/>
 </kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_java}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:39:40.117" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Java "]'.</msg>
-<msg timestamp="20231108 17:39:40.298" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Java "]</msg>
-<status status="PASS" starttime="20231108 17:39:40.113" endtime="20231108 17:39:40.298"/>
+<kw name="Click LongButtons" library="meta">
+<kw name="Validate if is right page" library="meta">
+<arg>${btn_btnClique}</arg>
+<kw name="Wait Until Page Contains" library="AppiumLibrary">
+<arg>${text}</arg>
+<doc>Waits until `text` appears on current page.</doc>
+<status status="PASS" starttime="20231113 14:04:24.403" endtime="20231113 14:04:24.448"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:40.112" endtime="20231108 17:39:40.298"/>
+<status status="PASS" starttime="20231113 14:04:24.403" endtime="20231113 14:04:24.448"/>
 </kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_java}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:39:41.324" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:39:40.300" endtime="20231108 17:39:41.325"/>
+<kw name="Long Press" library="AppiumLibrary">
+<arg>${btn_btnLong}</arg>
+<arg>1000</arg>
+<doc>*DEPRECATED!!* Since selenium v4, use other keywords.</doc>
+<msg timestamp="20231113 14:04:24.448" level="WARN">Keyword 'AppiumLibrary.Long Press' is deprecated. Since selenium v4, use other keywords.</msg>
+<msg timestamp="20231113 14:04:27.042" level="INFO">criteria is io.qaninja.android.twp:id/long_click</msg>
+<status status="PASS" starttime="20231113 14:04:24.448" endtime="20231113 14:04:27.042"/>
 </kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:39:41.416" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Java "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:39:41.417" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Java "]</msg>
-<status status="PASS" starttime="20231108 17:39:41.325" endtime="20231108 17:39:41.417"/>
+<kw name="Wait Until Page Contains" library="AppiumLibrary">
+<arg>${btn_success_btnLong}</arg>
+<doc>Waits until `text` appears on current page.</doc>
+<status status="PASS" starttime="20231113 14:04:27.043" endtime="20231113 14:04:27.070"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:40.299" endtime="20231108 17:39:41.417"/>
+<status status="PASS" starttime="20231113 14:04:24.403" endtime="20231113 14:04:27.070"/>
+</kw>
+<kw name="Validate Button is press" library="meta">
+<arg>${btn_success_btnLong}</arg>
+<kw name="Validate Message" library="basic">
+<arg>${txt}</arg>
+<kw name="Wait Until Page Contains" library="AppiumLibrary">
+<arg>${txt}</arg>
+<doc>Waits until `text` appears on current page.</doc>
+<status status="PASS" starttime="20231113 14:04:27.071" endtime="20231113 14:04:27.093"/>
+</kw>
+<status status="PASS" starttime="20231113 14:04:27.071" endtime="20231113 14:04:27.093"/>
+</kw>
+<status status="PASS" starttime="20231113 14:04:27.070" endtime="20231113 14:04:27.093"/>
 </kw>
 <kw name="Close Session" library="basic" type="TEARDOWN">
 <kw name="Close Application with Appium" library="basic">
 <kw name="Close All Applications" library="AppiumLibrary">
 <doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:39:41.418" endtime="20231108 17:39:42.203"/>
+<status status="PASS" starttime="20231113 14:04:27.095" endtime="20231113 14:04:27.401"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:41.418" endtime="20231108 17:39:42.203"/>
+<status status="PASS" starttime="20231113 14:04:27.095" endtime="20231113 14:04:27.401"/>
 </kw>
-<status status="PASS" starttime="20231108 17:39:41.417" endtime="20231108 17:39:42.203"/>
+<status status="PASS" starttime="20231113 14:04:27.095" endtime="20231113 14:04:27.403"/>
 </kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:39:18.018" endtime="20231108 17:39:42.203"/>
+<tag>LongButton</tag>
+<status status="PASS" starttime="20231113 14:04:06.856" endtime="20231113 14:04:27.403"/>
 </test>
-<test id="s1-t4" name="Selected CheckBox javaScript" line="86">
-<kw name="Open Session" library="basic" type="SETUP">
-<kw name="Open Application with Appium" library="basic">
-<kw name="Open Application" library="AppiumLibrary">
-<arg>http://127.0.0.1:4723/wd/hub</arg>
-<arg>automationName=UiAutomator2</arg>
-<arg>platformName=Android</arg>
-<arg>deviceName=Android Emulator</arg>
-<arg>app=C:/automationTests/twp/app/twp.apk</arg>
-<doc>Opens a new application to given Appium server.
-Capabilities of appium server, Android and iOS,
-Please check https://github.com/appium/appium/blob/master/docs/en/writing-running-appium/server-args.md
-| *Option*            | *Man.* | *Description*     |
-| remote_url          | Yes    | Appium server url |
-| alias               | no     | alias             |
-| strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:39:42.206" endtime="20231108 17:39:53.571"/>
-</kw>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<arg>5</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:39:53.571" endtime="20231108 17:39:58.639"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:42.206" endtime="20231108 17:39:58.639"/>
-</kw>
-<kw name="Enter in Application" library="basic">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:39:59.449" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:39:58.639" endtime="20231108 17:39:59.451"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:58.639" endtime="20231108 17:39:59.451"/>
-</kw>
-<kw name="Set Appium Timeout" library="AppiumLibrary">
-<arg>10</arg>
-<doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:39:59.451" endtime="20231108 17:39:59.451"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:42.206" endtime="20231108 17:39:59.451"/>
-</kw>
-<kw name="Open Inputs" library="meta">
-<kw name="Enter Navegation Menu" library="meta">
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:00.701" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]
-xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:39:59.452" endtime="20231108 17:40:00.702"/>
-</kw>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:40:00.704" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:40:00.799" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:40:00.702" endtime="20231108 17:40:00.799"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${element_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:01.834" level="INFO">criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:40:00.799" endtime="20231108 17:40:01.834"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:59.452" endtime="20231108 17:40:01.834"/>
-</kw>
-<kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${page}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:02.029" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:40:01.835" endtime="20231108 17:40:02.029"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:03.029" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:40:02.029" endtime="20231108 17:40:03.029"/>
-</kw>
-<kw name="Element Text Should Be" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<arg>${page}</arg>
-<doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:40:03.031" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:40:03.064" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:40:03.029" endtime="20231108 17:40:03.064"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:01.834" endtime="20231108 17:40:03.064"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:03.064" endtime="20231108 17:40:03.193"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:03.064" endtime="20231108 17:40:03.193"/>
-</kw>
-<status status="PASS" starttime="20231108 17:39:59.452" endtime="20231108 17:40:03.193"/>
-</kw>
-<kw name="Open CheckBox" library="meta">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:03.369" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:40:03.194" endtime="20231108 17:40:03.369"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:03.369" endtime="20231108 17:40:04.703"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:03.369" endtime="20231108 17:40:04.703"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:03.194" endtime="20231108 17:40:04.703"/>
-</kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_javascript}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:40:04.707" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Javascript "]'.</msg>
-<msg timestamp="20231108 17:40:04.851" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Javascript "]</msg>
-<status status="PASS" starttime="20231108 17:40:04.704" endtime="20231108 17:40:04.851"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:04.703" endtime="20231108 17:40:04.852"/>
-</kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_javascript}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:05.801" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:40:04.853" endtime="20231108 17:40:05.801"/>
-</kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:40:05.960" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Javascript "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:40:05.960" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Javascript "]</msg>
-<status status="PASS" starttime="20231108 17:40:05.801" endtime="20231108 17:40:05.960"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:04.852" endtime="20231108 17:40:05.961"/>
-</kw>
-<kw name="Close Session" library="basic" type="TEARDOWN">
-<kw name="Close Application with Appium" library="basic">
-<kw name="Close All Applications" library="AppiumLibrary">
-<doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:40:05.963" endtime="20231108 17:40:06.745"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:05.962" endtime="20231108 17:40:06.745"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:05.961" endtime="20231108 17:40:06.745"/>
-</kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:39:42.205" endtime="20231108 17:40:06.745"/>
-</test>
-<test id="s1-t5" name="Selected CheckBox Cobol" line="93">
-<kw name="Open Session" library="basic" type="SETUP">
-<kw name="Open Application with Appium" library="basic">
-<kw name="Open Application" library="AppiumLibrary">
-<arg>http://127.0.0.1:4723/wd/hub</arg>
-<arg>automationName=UiAutomator2</arg>
-<arg>platformName=Android</arg>
-<arg>deviceName=Android Emulator</arg>
-<arg>app=C:/automationTests/twp/app/twp.apk</arg>
-<doc>Opens a new application to given Appium server.
-Capabilities of appium server, Android and iOS,
-Please check https://github.com/appium/appium/blob/master/docs/en/writing-running-appium/server-args.md
-| *Option*            | *Man.* | *Description*     |
-| remote_url          | Yes    | Appium server url |
-| alias               | no     | alias             |
-| strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:40:06.749" endtime="20231108 17:40:18.544"/>
-</kw>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<arg>5</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:18.544" endtime="20231108 17:40:23.318"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:06.749" endtime="20231108 17:40:23.319"/>
-</kw>
-<kw name="Enter in Application" library="basic">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:24.147" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:40:23.319" endtime="20231108 17:40:24.147"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:23.319" endtime="20231108 17:40:24.147"/>
-</kw>
-<kw name="Set Appium Timeout" library="AppiumLibrary">
-<arg>10</arg>
-<doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:40:24.147" endtime="20231108 17:40:24.147"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:06.748" endtime="20231108 17:40:24.147"/>
-</kw>
-<kw name="Open Inputs" library="meta">
-<kw name="Enter Navegation Menu" library="meta">
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:25.363" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]
-xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:40:24.149" endtime="20231108 17:40:25.363"/>
-</kw>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:40:25.366" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:40:25.472" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:40:25.363" endtime="20231108 17:40:25.472"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${element_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:26.524" level="INFO">criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:40:25.473" endtime="20231108 17:40:26.524"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:24.148" endtime="20231108 17:40:26.525"/>
-</kw>
-<kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${page}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:26.709" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:40:26.525" endtime="20231108 17:40:26.709"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:27.701" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:40:26.709" endtime="20231108 17:40:27.701"/>
-</kw>
-<kw name="Element Text Should Be" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<arg>${page}</arg>
-<doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:40:27.704" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:40:27.739" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:40:27.701" endtime="20231108 17:40:27.739"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:26.525" endtime="20231108 17:40:27.739"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:27.739" endtime="20231108 17:40:27.790"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:27.739" endtime="20231108 17:40:27.790"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:24.148" endtime="20231108 17:40:27.790"/>
-</kw>
-<kw name="Open CheckBox" library="meta">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:27.894" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:40:27.791" endtime="20231108 17:40:27.894"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:27.895" endtime="20231108 17:40:29.075"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:27.894" endtime="20231108 17:40:29.075"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:27.791" endtime="20231108 17:40:29.075"/>
-</kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_cobol}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:40:29.078" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Cobol "]'.</msg>
-<msg timestamp="20231108 17:40:29.189" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Cobol "]</msg>
-<status status="PASS" starttime="20231108 17:40:29.076" endtime="20231108 17:40:29.189"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:29.075" endtime="20231108 17:40:29.189"/>
-</kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_cobol}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:30.148" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:40:29.191" endtime="20231108 17:40:30.149"/>
-</kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:40:30.213" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Cobol "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:40:30.213" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Cobol "]</msg>
-<status status="PASS" starttime="20231108 17:40:30.149" endtime="20231108 17:40:30.213"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:29.191" endtime="20231108 17:40:30.213"/>
-</kw>
-<kw name="Close Session" library="basic" type="TEARDOWN">
-<kw name="Close Application with Appium" library="basic">
-<kw name="Close All Applications" library="AppiumLibrary">
-<doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:40:30.214" endtime="20231108 17:40:31.052"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:30.214" endtime="20231108 17:40:31.052"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:30.214" endtime="20231108 17:40:31.053"/>
-</kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:40:06.748" endtime="20231108 17:40:31.053"/>
-</test>
-<test id="s1-t6" name="Selected CheckBox C#" line="100">
-<kw name="Open Session" library="basic" type="SETUP">
-<kw name="Open Application with Appium" library="basic">
-<kw name="Open Application" library="AppiumLibrary">
-<arg>http://127.0.0.1:4723/wd/hub</arg>
-<arg>automationName=UiAutomator2</arg>
-<arg>platformName=Android</arg>
-<arg>deviceName=Android Emulator</arg>
-<arg>app=C:/automationTests/twp/app/twp.apk</arg>
-<doc>Opens a new application to given Appium server.
-Capabilities of appium server, Android and iOS,
-Please check https://github.com/appium/appium/blob/master/docs/en/writing-running-appium/server-args.md
-| *Option*            | *Man.* | *Description*     |
-| remote_url          | Yes    | Appium server url |
-| alias               | no     | alias             |
-| strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:40:31.064" endtime="20231108 17:40:42.505"/>
-</kw>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<arg>5</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:42.506" endtime="20231108 17:40:47.494"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:31.063" endtime="20231108 17:40:47.495"/>
-</kw>
-<kw name="Enter in Application" library="basic">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:48.564" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:40:47.495" endtime="20231108 17:40:48.564"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:47.495" endtime="20231108 17:40:48.564"/>
-</kw>
-<kw name="Set Appium Timeout" library="AppiumLibrary">
-<arg>10</arg>
-<doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:40:48.565" endtime="20231108 17:40:48.565"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:31.063" endtime="20231108 17:40:48.565"/>
-</kw>
-<kw name="Open Inputs" library="meta">
-<kw name="Enter Navegation Menu" library="meta">
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:49.798" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]
-xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:40:48.566" endtime="20231108 17:40:49.798"/>
-</kw>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:40:49.802" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:40:49.908" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:40:49.798" endtime="20231108 17:40:49.908"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${element_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:50.919" level="INFO">criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:40:49.908" endtime="20231108 17:40:50.919"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:48.566" endtime="20231108 17:40:50.919"/>
-</kw>
-<kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${page}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:51.091" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:40:50.919" endtime="20231108 17:40:51.091"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:52.089" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:40:51.091" endtime="20231108 17:40:52.089"/>
-</kw>
-<kw name="Element Text Should Be" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<arg>${page}</arg>
-<doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:40:52.091" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:40:52.119" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:40:52.089" endtime="20231108 17:40:52.119"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:50.919" endtime="20231108 17:40:52.119"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:52.119" endtime="20231108 17:40:52.189"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:52.119" endtime="20231108 17:40:52.189"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:48.566" endtime="20231108 17:40:52.189"/>
-</kw>
-<kw name="Open CheckBox" library="meta">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:40:52.295" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:40:52.191" endtime="20231108 17:40:52.295"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:40:52.296" endtime="20231108 17:40:53.405"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:52.295" endtime="20231108 17:40:53.405"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:52.189" endtime="20231108 17:40:53.405"/>
-</kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_c#}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:40:53.409" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="C# "]'.</msg>
-<msg timestamp="20231108 17:40:53.558" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="C# "]</msg>
-<status status="PASS" starttime="20231108 17:40:53.406" endtime="20231108 17:40:53.558"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:53.406" endtime="20231108 17:40:53.558"/>
-</kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_c#}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:40:54.566" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:40:53.560" endtime="20231108 17:40:54.567"/>
-</kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:40:54.647" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="C# "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:40:54.647" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="C# "]</msg>
-<status status="PASS" starttime="20231108 17:40:54.567" endtime="20231108 17:40:54.647"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:53.559" endtime="20231108 17:40:54.647"/>
-</kw>
-<kw name="Close Session" library="basic" type="TEARDOWN">
-<kw name="Close Application with Appium" library="basic">
-<kw name="Close All Applications" library="AppiumLibrary">
-<doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:40:54.649" endtime="20231108 17:40:55.251"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:54.649" endtime="20231108 17:40:55.251"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:54.648" endtime="20231108 17:40:55.251"/>
-</kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:40:31.061" endtime="20231108 17:40:55.252"/>
-</test>
-<test id="s1-t7" name="Selected CheckBox RobotFramework" line="107">
-<kw name="Open Session" library="basic" type="SETUP">
-<kw name="Open Application with Appium" library="basic">
-<kw name="Open Application" library="AppiumLibrary">
-<arg>http://127.0.0.1:4723/wd/hub</arg>
-<arg>automationName=UiAutomator2</arg>
-<arg>platformName=Android</arg>
-<arg>deviceName=Android Emulator</arg>
-<arg>app=C:/automationTests/twp/app/twp.apk</arg>
-<doc>Opens a new application to given Appium server.
-Capabilities of appium server, Android and iOS,
-Please check https://github.com/appium/appium/blob/master/docs/en/writing-running-appium/server-args.md
-| *Option*            | *Man.* | *Description*     |
-| remote_url          | Yes    | Appium server url |
-| alias               | no     | alias             |
-| strict_ssl          | No     | allows you to send commands to an invalid certificate host like a self-signed one. |</doc>
-<status status="PASS" starttime="20231108 17:40:55.255" endtime="20231108 17:41:09.619"/>
-</kw>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<arg>5</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:41:09.619" endtime="20231108 17:41:13.820"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:55.255" endtime="20231108 17:41:13.820"/>
-</kw>
-<kw name="Enter in Application" library="basic">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${btn_start}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:41:15.464" level="INFO">xpath criteria: //*[contains(@text,"COMEÇAR")]</msg>
-<status status="PASS" starttime="20231108 17:41:13.821" endtime="20231108 17:41:15.464"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:13.820" endtime="20231108 17:41:15.464"/>
-</kw>
-<kw name="Set Appium Timeout" library="AppiumLibrary">
-<arg>10</arg>
-<doc>Sets the timeout in seconds used by various keywords.</doc>
-<status status="PASS" starttime="20231108 17:41:15.465" endtime="20231108 17:41:15.465"/>
-</kw>
-<status status="PASS" starttime="20231108 17:40:55.254" endtime="20231108 17:41:15.466"/>
-</kw>
-<kw name="Open Inputs" library="meta">
-<kw name="Enter Navegation Menu" library="meta">
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:41:17.201" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]
-xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:41:15.469" endtime="20231108 17:41:17.201"/>
-</kw>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${btn_menu}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:41:17.206" level="INFO">Clicking element 'xpath=//android.widget.ImageButton[@content-desc="Open navigation drawer"]'.</msg>
-<msg timestamp="20231108 17:41:17.367" level="INFO">xpath criteria: //android.widget.ImageButton[@content-desc="Open navigation drawer"]</msg>
-<status status="PASS" starttime="20231108 17:41:17.201" endtime="20231108 17:41:17.367"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${element_menu}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:41:18.584" level="INFO">criteria is io.qaninja.android.twp:id/navView</msg>
-<status status="PASS" starttime="20231108 17:41:17.368" endtime="20231108 17:41:18.584"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:15.468" endtime="20231108 17:41:18.584"/>
-</kw>
-<kw name="Access the page using the menu" library="meta">
-<arg>INPUTS</arg>
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${page}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:41:18.909" level="INFO">xpath criteria: //*[contains(@text,"INPUTS")]</msg>
-<status status="PASS" starttime="20231108 17:41:18.585" endtime="20231108 17:41:18.909"/>
-</kw>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:41:20.053" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:41:18.909" endtime="20231108 17:41:20.053"/>
-</kw>
-<kw name="Element Text Should Be" library="AppiumLibrary">
-<arg>${page_title}</arg>
-<arg>${page}</arg>
-<doc>Verifies element identified by ``locator`` exactly contains text ``expected``.</doc>
-<msg timestamp="20231108 17:41:20.061" level="INFO">Verifying element 'id=io.qaninja.android.twp:id/toolbarTitle' contains exactly text 'INPUTS'.</msg>
-<msg timestamp="20231108 17:41:20.147" level="INFO">criteria is io.qaninja.android.twp:id/toolbarTitle</msg>
-<status status="PASS" starttime="20231108 17:41:20.053" endtime="20231108 17:41:20.147"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:18.585" endtime="20231108 17:41:20.147"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>INPUTS</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:41:20.148" endtime="20231108 17:41:20.397"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:20.147" endtime="20231108 17:41:20.397"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:15.466" endtime="20231108 17:41:20.397"/>
-</kw>
-<kw name="Open CheckBox" library="meta">
-<kw name="Click Text" library="AppiumLibrary">
-<arg>${text_checkBox}</arg>
-<doc>Click text identified by ``text``.</doc>
-<msg timestamp="20231108 17:41:20.614" level="INFO">xpath criteria: //*[contains(@text,"CHECKBOX")]</msg>
-<status status="PASS" starttime="20231108 17:41:20.400" endtime="20231108 17:41:20.614"/>
-</kw>
-<kw name="Validate if is right page" library="meta">
-<arg>${title_checkBox}</arg>
-<kw name="Wait Until Page Contains" library="AppiumLibrary">
-<arg>${text}</arg>
-<doc>Waits until `text` appears on current page.</doc>
-<status status="PASS" starttime="20231108 17:41:20.616" endtime="20231108 17:41:22.201"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:20.615" endtime="20231108 17:41:22.201"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:20.399" endtime="20231108 17:41:22.201"/>
-</kw>
-<kw name="Button Selected language" library="meta">
-<arg>${fld_checkBox_robotFram}</arg>
-<kw name="Click Element" library="AppiumLibrary">
-<arg>${language}</arg>
-<doc>Click element identified by `locator`.</doc>
-<msg timestamp="20231108 17:41:22.210" level="INFO">Clicking element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Robot Framework "]'.</msg>
-<msg timestamp="20231108 17:41:22.598" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Robot Framework "]</msg>
-<status status="PASS" starttime="20231108 17:41:22.203" endtime="20231108 17:41:22.598"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:22.202" endtime="20231108 17:41:22.598"/>
-</kw>
-<kw name="Validate CheckBox is Checked" library="meta">
-<arg>${fld_checkBox_robotFram}</arg>
-<kw name="Wait Until Element Is Visible" library="AppiumLibrary">
-<arg>${fld_checkBox_container}</arg>
-<doc>Waits until element specified with `locator` is visible.</doc>
-<msg timestamp="20231108 17:41:23.557" level="INFO">criteria is io.qaninja.android.twp:id/rvContainer</msg>
-<status status="PASS" starttime="20231108 17:41:22.601" endtime="20231108 17:41:23.557"/>
-</kw>
-<kw name="Element Attribute Should Match" library="AppiumLibrary">
-<arg>${language}</arg>
-<arg>checked</arg>
-<arg>true</arg>
-<doc>Verify that an attribute of an element matches the expected criteria.</doc>
-<msg timestamp="20231108 17:41:23.675" level="INFO">Element 'xpath=//android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Robot Framework "]' attribute 'checked' is 'true' </msg>
-<msg timestamp="20231108 17:41:23.675" level="INFO">xpath criteria: //android.widget.CheckBox[@resource-id="io.qaninja.android.twp:id/checkboxButton" and @text="Robot Framework "]</msg>
-<status status="PASS" starttime="20231108 17:41:23.558" endtime="20231108 17:41:23.675"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:22.599" endtime="20231108 17:41:23.675"/>
-</kw>
-<kw name="Close Session" library="basic" type="TEARDOWN">
-<kw name="Close Application with Appium" library="basic">
-<kw name="Close All Applications" library="AppiumLibrary">
-<doc>Closes all open applications.</doc>
-<status status="PASS" starttime="20231108 17:41:23.677" endtime="20231108 17:41:24.406"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:23.677" endtime="20231108 17:41:24.406"/>
-</kw>
-<status status="PASS" starttime="20231108 17:41:23.676" endtime="20231108 17:41:24.406"/>
-</kw>
-<tag>CheckBox</tag>
-<status status="PASS" starttime="20231108 17:40:55.253" endtime="20231108 17:41:24.408"/>
-</test>
-<status status="PASS" starttime="20231108 17:38:32.087" endtime="20231108 17:41:24.423"/>
+<status status="PASS" starttime="20231113 14:04:06.598" endtime="20231113 14:04:27.404"/>
 </suite>
 <statistics>
 <total>
-<stat pass="7" fail="0" skip="0">All Tests</stat>
+<stat pass="1" fail="0" skip="0">All Tests</stat>
 </total>
 <tag>
-<stat pass="7" fail="0" skip="0">CheckBox</stat>
+<stat pass="1" fail="0" skip="0">LongButton</stat>
 </tag>
 <suite>
-<stat pass="7" fail="0" skip="0" id="s1" name="inputsPage">inputsPage</stat>
+<stat pass="1" fail="0" skip="0" id="s1" name="ButtonsPage">ButtonsPage</stat>
 </suite>
 </statistics>
 <errors>
+<msg timestamp="20231113 14:04:24.448" level="WARN">Keyword 'AppiumLibrary.Long Press' is deprecated. Since selenium v4, use other keywords.</msg>
 </errors>
 </robot>

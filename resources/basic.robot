@@ -7,6 +7,8 @@ Resource                                    ./login/meta.robot
 Resource                                    ./InputsPage/data.robot
 Resource                                    ./InputsPage/meta.robot
 Library                                     ./factory/User.py
+Resource                                    ./ButtonsPage/data.robot
+Resource                                    ./ButtonsPage/meta.robot
 
 *** Keywords ***
 Open Application with Appium
