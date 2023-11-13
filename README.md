@@ -62,6 +62,6 @@ Start the machine for testing (every time):
 
 <p align="center">
   <kbd>
-    <img src="./app/report.png" alt="Report Tests">
+    <img src="./app/reportNew.png" alt="Report Tests">
   </kbd>
 </p>
