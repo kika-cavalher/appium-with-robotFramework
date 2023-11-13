@@ -12,6 +12,7 @@ Test Teardown                               Close Session
 
 *** Test Cases ***
 Login Success
+    [Tags]                                  Login
     Open Forms
     Open Login
     Fill Login Forms                     
