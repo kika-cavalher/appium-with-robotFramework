@@ -11,6 +11,9 @@ Resource                                    ./ButtonsPage/data.robot
 Resource                                    ./ButtonsPage/meta.robot
 Resource                                    ./register/data.robot
 Resource                                    ./register/meta.robot
+Resource                                    ./avangers/data.robot
+Resource                                    ./avangers/meta.robot
+
 
 
 *** Keywords ***
