@@ -10,7 +10,7 @@ Test Teardown                               Close Session
 
 *** Test Cases ***
 
-Delet All Avanger
+Delete All Avanger
     [Tags]                                   deleteAvanger
 
     Open AvangersPage
@@ -26,7 +26,7 @@ Delet All Avanger
     Delete Firts Avenger
     Validate Avenger Removed                 Homem Aranha
 
-Delet Capitao America
+Delete Capitao America
     [Tags]                                   delete_CapitaoAmerica
     
     Open AvangersPage
@@ -34,7 +34,7 @@ Delet Capitao America
     Delete Firts Avenger
     Validate Avenger Removed                 Capitão América
    
-Delet Thor
+Delete Thor
     [Tags]                                   delete_Thor
     
     Open AvangersPage
@@ -42,7 +42,7 @@ Delet Thor
     Delete Second Avenger
     Validate Avenger Removed                 Thor
    
-Delet Homem de Ferro
+Delete Homem de Ferro
     [Tags]                                   delete_HomemFerro
     
     Open AvangersPage
@@ -50,7 +50,7 @@ Delet Homem de Ferro
     Delete Third Avenger
     Validate Avenger Removed                 Homem de Ferro
    
-Delet Hulk
+Delete Hulk
     [Tags]                                   delete_Hulk
     
     Open AvangersPage
@@ -58,7 +58,7 @@ Delet Hulk
     Delete Fourth Avenger
     Validate Avenger Removed                 Hulk
    
-Delet Homem Aranha
+Delete Homem Aranha
     [Tags]                                   delete_HomemAranha
     
     Open AvangersPage
