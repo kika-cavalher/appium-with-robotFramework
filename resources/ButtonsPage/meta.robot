@@ -22,7 +22,6 @@ Open SimpleButtons
 Click SimpleButtons
     Validate if is right page                              ${btn_btnClique}
     Click Text                                             ${btn_btnClique}
-    
 
 #Long
 Open LongButtons

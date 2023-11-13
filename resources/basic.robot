@@ -1,14 +1,17 @@
 *** Settings ***
 Library                                     AppiumLibrary
+Library                                     ./factory/User.py
 Resource                                    ./home/data.robot
 Resource                                    ./home/meta.robot
 Resource                                    ./login/data.robot
 Resource                                    ./login/meta.robot
 Resource                                    ./InputsPage/data.robot
 Resource                                    ./InputsPage/meta.robot
-Library                                     ./factory/User.py
 Resource                                    ./ButtonsPage/data.robot
 Resource                                    ./ButtonsPage/meta.robot
+Resource                                    ./register/data.robot
+Resource                                    ./register/meta.robot
+
 
 *** Keywords ***
 Open Application with Appium
