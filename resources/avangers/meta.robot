@@ -3,29 +3,43 @@
 Resource                                    ../basic.robot
 
 *** Keywords ***
-# Open FormsPage
-#     Enter Navegation Menu
-#     Access the page using the menu          ${text_menu_RegisterPage}
-#     Validate if is right page               ${text_menu_RegisterPage}
+Open AvangersPage
+    Enter Navegation Menu
+    Access the page using the menu          ${text_menu_avangerPage}
+    Validate if is right page               ${text_menu_avangerPage}
 
-# Open Register   
-#     Click Text                              ${btn_Register}
-#     Validate if is right page               ${text_RegisterPage}
+Open List Avangers   
+    Click Text                              ${btn_List_avangers}
+    Validate if is right page               ${btn_List_avangers}
 
 
-# Fill Register Forms
-#     ${user}                                  Factory Session                    register          
+Delete Firts Avenger
+    Swipe By Percent                        89    19    47    19
+    Wait Until Element Is Visible           ${icon_remove_avager}
+    Click Element                           ${icon_remove_avager}
+
+Delete Second Avenger
+    Swipe By Percent                        89    35    47    35
+    Wait Until Element Is Visible           ${icon_remove_avager}
+    Click Element                           ${icon_remove_avager}
+
+Delete Third Avenger
+    Swipe By Percent                        89    50    47    50
+    Wait Until Element Is Visible           ${icon_remove_avager}
+    Click Element                           ${icon_remove_avager}
+
+Delete Fourth Avenger
+    Swipe By Percent                        89    65    47    65
+    Wait Until Element Is Visible           ${icon_remove_avager}
+    Click Element                           ${icon_remove_avager}
+
+Delete Fifth Avenger
+    Swipe By Percent                        89    80    47    80
+    Wait Until Element Is Visible           ${icon_remove_avager}
+    Click Element                           ${icon_remove_avager}
+
+Validate Avenger Removed
+    [Arguments]                            ${avager}
     
-#     Input Text                               ${formRegister_name}               ${user}[name] 
-#     Input Text                               ${formRegister_email}              ${user}[email] 
-#     Input Text                               ${formRegister_pass}               ${user}[pass] 
-
-
-
-# Selected perfil in Forms
-#     [Arguments]                              ${perfil}
-
-#     Click Element                            ${btn_perfilChoise}
-#     Wait Until Element Is Visible            ${fld_listOptions}
-#     Click Text                               ${perfil}
-#     Click Element                            ${btn_enter}
+    Wait Until Page Does Not Contain       ${avager}
+    Page Should Not Contain Text           ${avager}

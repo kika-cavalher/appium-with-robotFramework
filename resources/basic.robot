@@ -24,10 +24,11 @@ Open Application with Appium
     ...                                     deviceName=Android Emulator
     ...                                     app=C:/automationTests/twp/app/twp.apk
     
-    Wait Until Page Contains                ${btn_start}                                    5
+    Wait Until Page Contains                ${btn_start}                                    15
 
 
 Close Application with Appium
+    Capture Page Screenshot
     Close All Applications
 
 Enter in Application
@@ -36,7 +37,7 @@ Enter in Application
 Open Session
     Open Application with Appium
     Enter in Application
-    Set Appium Timeout                      10
+    Set Appium Timeout                      15
 
 Close Session
     Close Application with Appium

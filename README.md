@@ -60,8 +60,8 @@ Start the machine for testing (every time):
 - [X] Appium Server GUI + Appium Inspector (Open both systems and start session)
 
 
-<!--<p align="center">
+<p align="center">
   <kbd>
-    <img style="border-radius: 5px" height="450" src="./Frontend/20220805_180552.gif" alt="preview">
+    <img src="./app/report.png" alt="Report Tests">
   </kbd>
-</p>-->
+</p>

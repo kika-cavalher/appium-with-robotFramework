@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<robot generator="Robot 6.1.1 (Python 3.8.1 on win32)" generated="20231107 15:33:05.086" rpa="false" schemaversion="4">
+<robot generator="Robot 6.1.1 (Python 3.8.1 on win32)" generated="20231113 15:48:20.390" rpa="false" schemaversion="4">
 <suite id="s1" name="Robot Interactive Console" source="c:\Users\erica\.vscode\extensions\robocorp.robotframework-lsp-1.11.0\src\robotframework_ls\vendored\robotframework_interactive\robot_interactive_console.robot">
 <test id="s1-t1" name="Default Task/Test" line="5">
 <kw name="Interpreter Main Loop" library="MainLoop">
-<kw name="Access the page using the menu">
-<arg>INPUTS</arg>
-<msg timestamp="20231107 15:33:06.945" level="FAIL">No keyword with name 'Access the page using the menu' found.</msg>
-<status status="FAIL" starttime="20231107 15:33:06.944" endtime="20231107 15:33:06.945"/>
+<kw name="Validate Message">
+<arg>${register_success}</arg>
+<msg timestamp="20231113 15:48:20.920" level="FAIL">No keyword with name 'Validate Message' found.</msg>
+<status status="FAIL" starttime="20231113 15:48:20.920" endtime="20231113 15:48:20.920"/>
 </kw>
-<status status="PASS" starttime="20231107 15:33:05.138" endtime="20231107 15:33:09.973"/>
+<status status="PASS" starttime="20231113 15:48:20.411" endtime="20231113 15:48:38.631"/>
 </kw>
-<status status="PASS" starttime="20231107 15:33:05.135" endtime="20231107 15:33:09.973"/>
+<status status="PASS" starttime="20231113 15:48:20.411" endtime="20231113 15:48:38.631"/>
 </test>
-<status status="PASS" starttime="20231107 15:33:05.089" endtime="20231107 15:33:09.974"/>
+<status status="PASS" starttime="20231113 15:48:20.391" endtime="20231113 15:48:38.632"/>
 </suite>
 <statistics>
 <total>
