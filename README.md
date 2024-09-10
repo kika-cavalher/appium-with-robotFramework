@@ -45,13 +45,12 @@ Before starting, you need to have on your computer:
 - [X] Inside the computer's directory, enter the username you use and write \AppData in the path to show a hidden folder. As an example: C:\Users\EricaCavalher\AppData
 - [X] Go to the Android folder and then SDK. Copy the path and paste it to be our environment variable.
 - [X] In the system environment variables, click on add a new system variable and in the name write: ANDROID_HOME and in the value put the SDK (taught above) file path as an example: C:\Users\EricaCavalher(EVIO)\AppData\Local\Android\Sdk
-- [X] Now let's access the variable that already exists called PATh and let's add some folders, like:
-      - platform-tools: C:\Users\EricaCavalher(EVIO)\AppData\Local\Android\Sdk\platform-tools
+- [X] Add other system variable with the name write: ADB_PATH and in the value put the folder platform-tools: C:\Users\EricaCavalher(EVIO)\AppData\Local\Android\Sdk\platform-tools
+- [X] Now let's access the variable that already exists called PATh and let's add some folders:
       - tools: C:\Users\EricaCavalher(EVIO)\AppData\Local\Android\Sdk\tools
       (Copy the *tools folder from this file: http://dl-ssl.google.com/android/repository/sdk-tools-windows-4333796.zip)
       - Inside tools more 2 files: bin and lib. Also paste these paths into PATHS
 - [X] Test in cmd if it was installed successfully: (echo %ANDROID_HOME%) and (echo %PATH%)
-
 
  ### At this point we will configure the Appium server:
 - [X] In cmd install globally
@@ -69,6 +68,10 @@ appium-doctor --android
  ### If everything is working correctly, we will install appium for desktop.
 - [X] Appium Server GUI (https://github.com/appium/appium-desktop/releases)
 - [X] Appium Inspector (https://github.com/appium/appium-inspector/releases)
+ 
+ ### To work the first time you need to fix some settings, like this:
+- [X] You will also need to configure the environment variables
+      - To find out the udid just type in cmeder: adb devices
 
 ### Other important settings to make:
 - [X] You will also need to configure the environment variables (To find out the udid just type in cmeder: adb devices)
