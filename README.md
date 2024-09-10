@@ -67,13 +67,12 @@ appium-doctor --android
 ```
 
  ### If everything is working correctly, we will install appium for desktop.
-- [X] Appium Server GUI + Appium Inspector (https://github.com/appium/appium-desktop/releases)
-
+- [X] Appium Server GUI (https://github.com/appium/appium-desktop/releases)
+- [X] Appium Inspector (https://github.com/appium/appium-inspector/releases)
 
 ### Other important settings to make:
 - [X] You will also need to configure the environment variables (To find out the udid just type in cmeder: adb devices)
 - [X] Don't forget to configure the mandatory capability information to access the system (basic file)
-- [ ] 
 
 ### 💻 To start 
 ## install everything necessary for the project to work
