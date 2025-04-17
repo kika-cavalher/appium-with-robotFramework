@@ -15,7 +15,7 @@ This guide explains how to set up your environment to run Robot Framework automa
 
 ## 🧰 1. Pre-Requisites: Install Essential Tools
 
-### - [X] Install Node.js
+- [X] Install Node.js
 
 Download from: https://nodejs.org/  
 Install the **LTS version**.
@@ -30,7 +30,7 @@ npm -v
 
 ---
 
-### - [X] Install Python
+- [X] Install Python
 
 Download from: https://www.python.org/downloads/release/python-3125/
 
@@ -63,7 +63,7 @@ pip --version
 
 ---
 
-### - [X] Install VSCode (Recommended)
+- [X] Install VSCode (Recommended)
 
 Download: https://code.visualstudio.com/
 
@@ -78,7 +78,7 @@ Install the following extensions:
 
 ## 🔁 Clone the Project & Install Dependencies
 
-### - [X] Clone the Repository
+- [X] Clone the Repository
 
 If you don’t have Git, install it from: https://git-scm.com/downloads
 
@@ -93,7 +93,7 @@ cd QA_Automation
 
 ---
 
-### - [X] Install Python Dependencies
+- [X] Install Python Dependencies
 
 > This project already includes a `requirements.txt` file.
 
@@ -104,7 +104,7 @@ pip install -r requirements.txt
 
 ---
 
-### - [X] Verify Robot Framework Installation
+- [X] Verify Robot Framework Installation
 ```sh
 robot --version
 ```
@@ -218,16 +218,16 @@ appium-doctor --android
 
 ## ⚙️ 7. Start the Environment for Testing
 
-### - [X] Start your Android Emulator
+- [X] Start your Android Emulator
 Open **Android Studio → Device Manager**  
 Click ▶️ to start the virtual device
 
-### - [X] Launch Appium Server GUI
+- [X] Launch Appium Server GUI
 Open the app and click “Start Server”
 
-### - [X] Open Appium Inspector
+- [X] Open Appium Inspector
 
-### - [X] Get Emulator UDID
+- [X] Get Emulator UDID
 ```sh
 adb devices
 ```
