@@ -1,0 +1,154 @@
+name: Run Robot Signup Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      CLIENT_APP:
+        description: 'Client App'
+        required: true
+        default: 'QA_EVIO'
+      COUNTRY_APP:
+        description: 'Country App'
+        required: true
+        default: 'Portugal'
+      CLIENT_APP_APIKEY:
+        description: 'Client App API Key'
+        required: false
+        default: 'EVIO.APP'
+      USE_RANDOM_USER:
+        description: 'Use Random User (True/False)'
+        required: false
+        default: 'True'
+      FIXED_NAME:
+        description: 'Fixed Name'
+        required: false
+        default: 'Automation Test'
+      FIXED_EMAIL:
+        description: 'Fixed Email'
+        required: false
+        default: 'qa.goevion+55@gmail.com'
+      FIXED_MOBILE:
+        description: 'Fixed Mobile'
+        required: false
+        default: '915343679'
+      FIXED_PREFIX:
+        description: 'Fixed Prefix'
+        required: false
+        default: 'Por'
+      FIXED_PASSWORD:
+        description: 'Fixed Password'
+        required: false
+        default: 'Init_1234'
+
+  push:
+    branches:
+      - main
+    paths:
+      - '**'
+
+jobs:
+  robot-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      - run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install beautifulsoup4
+
+      - name: Set PYTHONPATH for Robot
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE/resource/ui/utils" >> $GITHUB_ENV
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js & Appium
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: |
+          npm install -g appium
+          appium driver install uiautomator2
+
+      - name: Pre-Install Android Emulator Tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager --install 'emulator' 'platform-tools' 'platforms;android-33' 'system-images;android-33;google_apis;x86_64'
+
+      - name: Run Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_4
+          target: google_apis
+          disable-linux-hw-accel: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel off
+          script: |
+            echo "Starting Android emulator..."
+            adb wait-for-device
+            adb shell "while [[ \"$(getprop sys.boot_completed)\" != \"1\" ]]; do sleep 1; done"
+            adb shell input keyevent 82
+
+      - name: Create log directory
+        run: mkdir -p .log
+
+      - name: Run Robot Tests
+        run: |
+          echo "🚀 Running tests..."
+          robot --outputdir .log \
+            --variable CLIENT_APP:${{ github.event.inputs.CLIENT_APP }} \
+            --variable COUNTRY_APP:${{ github.event.inputs.COUNTRY_APP }} \
+            --variable CLIENT_APP_APIKEY:${{ github.event.inputs.CLIENT_APP_APIKEY }} \
+            --variable USE_RANDOM_USER:${{ github.event.inputs.USE_RANDOM_USER }} \
+            --variable FIXED_NAME:"${{ github.event.inputs.FIXED_NAME }}" \
+            --variable FIXED_EMAIL:${{ github.event.inputs.FIXED_EMAIL }} \
+            --variable FIXED_MOBILE:${{ github.event.inputs.FIXED_MOBILE }} \
+            --variable FIXED_PREFIX:${{ github.event.inputs.FIXED_PREFIX }} \
+            --variable FIXED_PASSWORD:${{ github.event.inputs.FIXED_PASSWORD }} \
+            tests/EVIO/mobile/signup.robot || echo "❌ Robot tests failed. Check the logs."
+
+      - name: Check if logs exist
+        if: always()
+        run: |
+          echo "📂 Verifying log files..."
+          ls -l .log || echo "🛑 .log directory was not created"
+          test -f .log/output.xml || echo "❌ output.xml not found"
+          test -f .log/log.html || echo "❌ log.html not found"
+          test -f .log/report.html || echo "❌ report.html not found"
+
+      - name: Upload Robot Framework output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robot-log
+          path: .log
+
+      - name: Send Debug Email
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.office365.com
+          server_port: 587
+          username: erica.cavalher@go-evio.com
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🔧 Robot Framework Test Run - Logs"
+          to: erica.cavalher@go-evio.com
+          from: GitHub Actions Appium
+          body: |
+            Attached are the detailed logs from the latest Robot Framework test run.
+            🧪 Status: ${{ job.status }}
+          attachments: |
+            .log/output.xml
+            .log/log.html
+            .log/report.html
