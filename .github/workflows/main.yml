@@ -1,4 +1,9 @@
-name: Run Robot Signup Tests - Local Emulator CI
+name: Run Robot Mobile Suites – Local Emulator CI
+
+env:
+  ROBOT_SUITES: >-
+    tests/EVIO/mobile/signup.robot
+    tests/WL_ACP/mobile/signup.robot
 
 permissions:
   contents: read
@@ -14,101 +19,138 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout code
+      # ─────────── CODE & DEPENDENCIES ───────────
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 🐍 Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
+          cache: pip
 
-      - name: 📆 Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install beautifulsoup4
 
-      - name: ☕ Setup Java
+      - name: Set up Java
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
-      - name: 🤖 Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 🔐 Enable KVM permissions
+      - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: 🔵 Setup Node.js and Install Appium
+      - name: Set up Node.js and Appium
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
       - run: |
-          npm install -g appium
+          npm i -g appium
           appium driver install uiautomator2
 
-      - name: 🚀 Start Appium server
+      - name: Start Appium server
         run: |
-          nohup appium --port=4723 --address=127.0.0.1 --relaxed-security --base-path /wd/hub > appium.log 2>&1 &
+          nohup appium --address 127.0.0.1 --port 4723 --relaxed-security --base-path /wd/hub > appium.log 2>&1 &
 
-      - name: 🔍 Check Appium readiness
+      - name: Wait for Appium
         run: |
-          echo "Waiting for Appium server to be ready..."
-          timeout 60s bash -c 'until curl --silent --fail http://127.0.0.1:4723/wd/hub/status > /dev/null; do sleep 2; done'
+          timeout 60s bash -c 'until curl -sSf http://127.0.0.1:4723/wd/hub/status > /dev/null; do sleep 2; done'
 
-      - name: 📲 Start ADB log capture
+      - name: Capture ADB log
         run: nohup adb logcat > adb-logcat.log &
 
-      - name: 📱 Run Android Emulator and Robot Tests
+      # ────────────── TEST EXECUTION ──────────────
+      - name: Run all mobile suites
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_4
+          disable-animations: true
+          emulator-boot-timeout: 600
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
-            echo "⏳ Waiting for Android boot..."
-            timeout 180s bash -c 'until adb shell getprop sys.boot_completed | grep -m 1 1; do sleep 2; done'
-
-            echo "✅ Boot completed. Waiting for Appium connection to emulator..."
-            timeout 60s bash -c 'until adb devices | grep -m 1 "device$"; do sleep 2; done'
-
-            echo "📱 Emulator is ready, running Robot tests..."
+            timeout 180s bash -c 'until adb shell getprop sys.boot_completed | grep -m1 1; do sleep 2; done'
+            timeout 60s bash -c 'until adb devices | grep -m1 "device$"; do sleep 2; done'
             mkdir -p .log
-            robot --outputdir .log tests/EVIO/mobile/signup.robot || echo "Robot tests failed to execute"
 
-      - name: 📧 Send Debug Email
+            for SUITE in $ROBOT_SUITES; do CLIENT=$(basename "$(dirname "$(dirname "$SUITE")")"); SUITE_NAME=$(basename "$SUITE" .robot); OUTDIR=".log/${CLIENT}_${SUITE_NAME}"; mkdir -p "$OUTDIR"; echo "────────────────────────────────────────────"; echo "CLIENT : $CLIENT"; echo "SUITE  : $SUITE_NAME"; echo "PATH   : $SUITE"; echo "────────────────────────────────────────────"; robot -d "$OUTDIR" "$SUITE" || echo "Robot tests failed for ${CLIENT}_${SUITE_NAME}"; done
+
+      # ───────────── SUMMARY GENERATION ────────────
+      - name: Build summary
+        if: always()
+        shell: python
+        run: |
+          import os, xml.etree.ElementTree as ET, textwrap
+          from datetime import datetime, timezone
+
+          total_passed = total_failed = 0
+          sections = []
+
+          for entry in sorted(os.listdir(".log")):
+              xml_path = os.path.join(".log", entry, "output.xml")
+              if not os.path.isfile(xml_path):
+                  continue
+
+              client, _ = entry.rsplit("_", 1) 
+
+              root = ET.parse(xml_path).getroot()
+              p = f = 0
+              lines = [f"📦 Client: {client} – Suite folder: {entry}"]
+              for t in root.iter("test"):
+                  st = t.find("status").get("status")
+                  lines.append(f"- {t.get('name')}: {'✅' if st=='PASS' else '❌'} {st}")
+                  p += st == "PASS"
+                  f += st != "PASS"
+              total_passed += p
+              total_failed += f
+              sections.append("\n".join(lines))
+
+          overall = "FAILED" if total_passed + total_failed == 0 else ("SUCCESS" if total_failed == 0 else "FAILED")
+          if total_passed + total_failed == 0:
+              sections.append("- Result: ❌ no test outputs generated")
+
+          header = textwrap.dedent(f"""
+            📅 UTC: {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S}
+            📊 Total: {total_passed + total_failed} | Pass: {total_passed} | Fail: {total_failed}
+            📌 Status: {overall}
+          """).strip()
+
+          summary = header + "\n\n" + "\n\n".join(sections) + "\n"
+          open("summary.txt", "w", encoding="utf-8").write(summary)
+          open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8").write(summary)
+
+      # ───────────── ARTIFACTS & EMAIL ─────────────
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-artifacts
+          path: .log/
+
+      - name: Send e-mail summary
         if: always()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.office365.com
           server_port: 587
+          secure: false
           username: erica.cavalher@go-evio.com
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "Robot Framework Android Test Summary"
+          from: "Robot QA <erica.cavalher@go-evio.com>"
           to: erica.cavalher@go-evio.com
-          from: erica.cavalher@go-evio.com
-          content_type: text/plain
-          body: |
-            📦 Client: EVIO
-            🧪 Executed test: Signup (full flow)
-            📅 Status: ${{ job.status }}
-
-            ${{ job.status == 'success' && '
-            ✅ Test results:
-            - TC-01.01.01 - Successful account creation: ✅ Passed
-            - TC-01.01.02 - Weak password warning: ✅ Passed
-            - TC-01.01.03 - Attempt to sign up with already registered number: ✅ Passed
-            - TC-01.01.04 - Attempt to sign up with already registered email: ✅ Passed
-            - TC-01.01.14 - Upload a profile picture: ✅ Passed
-            ' || '' }}
-
-            🔍 Open the attached HTML report for the full results.
+          subject: "Robot Framework Mobile Test Summary"
+          body: file://summary.txt
           attachments: |
             .log/report.html
