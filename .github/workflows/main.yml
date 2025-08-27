@@ -1,145 +1,202 @@
-name: Run Robot Mobile Suites – Local Emulator CI
-
-env:
-  ROBOT_SUITES: >-
-    tests/EVIO/mobile/signup.robot
-    tests/WL_ACP/mobile/signup.robot
-
-permissions:
-  contents: read
-  actions: write
+name: Run Robot Mobile Suites
 
 on:
   push:
-    branches: ["main", "signup"]
+    branches: ["main", "signinTests"]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   robot-tests:
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [evio, wl]
+    env:
+      PYTHONDONTWRITEBYTECODE: 1
+      PABOT_PROCESSES: 1
+      EVIO_SUITES: >-
+        tests/MOBILE/EVIO/signin.robot
+        tests/MOBILE/EVIO/signup.robot
+      WL_SUITES: >-
+        tests/MOBILE/WL_ACP/signup.robot
+        tests/MOBILE/WL_ACP/signin.robot
+        
+    name: Robot Mobile - Shard ${{ matrix.shard }}
     steps:
-      # ─────────── CODE & DEPENDENCIES ───────────
-      - name: Checkout code
+      - name: 🧰 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
           cache: pip
 
-      - name: Install Python dependencies
+      - name: 📦 Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install beautifulsoup4
+          pip install robotframework-pabot robotframework-appiumlibrary python-dotenv requests
 
-      - name: Set up Java
+      - name: ☕ Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
+      - name: 📱 Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Enable KVM
+      - name: 🔓 Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Set up Node.js and Appium
+      - name: 🧪 Set up Node.js + Appium
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: |
+
+      - name: 📥 Install Appium + driver
+        run: |
           npm i -g appium
           appium driver install uiautomator2
 
-      - name: Start Appium server
+      - name: 🚀 Start Appium server
         run: |
           nohup appium --address 127.0.0.1 --port 4723 --relaxed-security --base-path /wd/hub > appium.log 2>&1 &
 
-      - name: Wait for Appium
+      - name: ⏳ Wait for Appium
         run: |
           timeout 60s bash -c 'until curl -sSf http://127.0.0.1:4723/wd/hub/status > /dev/null; do sleep 2; done'
 
-      - name: Capture ADB log
-        run: nohup adb logcat > adb-logcat.log &
+      - name: 📋 Capture ADB log
+        run: |
+          nohup adb logcat | grep -vE "gfxstream|glDeleteSync|error null ctx" > adb-logcat.log &
 
-      # ────────────── TEST EXECUTION ──────────────
-      - name: Run all mobile suites
+      - name: 🤖 Run suites for ${{ matrix.shard }}
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SHARD: ${{ matrix.shard }}
+          SUITES: ${{ matrix.shard == 'evio' && env.EVIO_SUITES || env.WL_SUITES }}
+          PABOT_PROCESSES: ${{ env.PABOT_PROCESSES }}
         with:
-          api-level: 34
+          api-level: 30
           target: google_apis
           arch: x86_64
-          profile: pixel_4
+          profile: Nexus 5
+          ram-size: 4096
           disable-animations: true
           emulator-boot-timeout: 600
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu off -noaudio -no-boot-anim -memory 4096 -cores 4
           script: |
+            set -e
             timeout 180s bash -c 'until adb shell getprop sys.boot_completed | grep -m1 1; do sleep 2; done'
             timeout 60s bash -c 'until adb devices | grep -m1 "device$"; do sleep 2; done'
+            sleep 45
             mkdir -p .log
+            for SUITE in $SUITES; do SUITE_NAME=$(basename "$SUITE" .robot); OUTDIR=".log/${SHARD}_${SUITE_NAME}"; mkdir -p "$OUTDIR"; pabot --processes ${PABOT_PROCESSES} --testlevelsplit --variable uiautomator2ServerInstallTimeout:60000 -d "$OUTDIR" "$SUITE" || echo "❌ Robot failed for ${SUITE_NAME}"; (cd .log && zip -qr "${SHARD}_${SUITE_NAME}.zip" "${SHARD}_${SUITE_NAME}" || true); done
 
-            for SUITE in $ROBOT_SUITES; do CLIENT=$(basename "$(dirname "$(dirname "$SUITE")")"); SUITE_NAME=$(basename "$SUITE" .robot); OUTDIR=".log/${CLIENT}_${SUITE_NAME}"; mkdir -p "$OUTDIR"; echo "────────────────────────────────────────────"; echo "CLIENT : $CLIENT"; echo "SUITE  : $SUITE_NAME"; echo "PATH   : $SUITE"; echo "────────────────────────────────────────────"; robot -d "$OUTDIR" "$SUITE" || echo "Robot tests failed for ${CLIENT}_${SUITE_NAME}"; done
-
-      # ───────────── SUMMARY GENERATION ────────────
-      - name: Build summary
+      - name: 📊 Build summary for ${{ matrix.shard }}
         if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
         shell: python
         run: |
           import os, xml.etree.ElementTree as ET, textwrap
           from datetime import datetime, timezone
-
+          shard = os.environ.get("SHARD", "X")
+          client = {"evio":"EVIO","wl":"WL_ACP"}.get(shard, shard.upper())
+          base = ".log"
           total_passed = total_failed = 0
           sections = []
-
-          for entry in sorted(os.listdir(".log")):
-              xml_path = os.path.join(".log", entry, "output.xml")
+          def short_reason(text, limit=180):
+              if not text: return "(no failure message found)"
+              lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+              for l in lines:
+                  if "Timed out after" in l and "AccessibilityNodeInfo" in l:
+                      return "❌ Device froze during camera capture"
+                  if any(k in l for k in ("Element locator","AssertionError","Timeout")):
+                      return (l[:limit]+"…") if len(l)>limit else l
+              return (lines[0][:limit]+"…") if lines else "(no message)"
+          def first_log_lines(text, max_lines=3):
+              if not text: return "  (no log found)"
+              lines = [l for l in text.strip().splitlines() if l.strip()]
+              return "\n".join([f"  {line}" for line in lines[:max_lines]])
+          for entry in sorted(os.listdir(base)):
+              if not entry.startswith(f"{shard}_"): 
+                  continue
+              xml_path = os.path.join(base, entry, "output.xml")
               if not os.path.isfile(xml_path):
                   continue
-
-              client, _ = entry.rsplit("_", 1) 
-
-              root = ET.parse(xml_path).getroot()
-              p = f = 0
-              lines = [f"📦 Client: {client} – Suite folder: {entry}"]
+              suite_name = entry.split("_",1)[1].upper()
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except ET.ParseError:
+                  sections.append(f"📦 Suite: {suite_name}\n- ❌ Could not parse output.xml")
+                  continue
+              passed, failed = [], []
               for t in root.iter("test"):
-                  st = t.find("status").get("status")
-                  lines.append(f"- {t.get('name')}: {'✅' if st=='PASS' else '❌'} {st}")
-                  p += st == "PASS"
-                  f += st != "PASS"
-              total_passed += p
-              total_failed += f
+                  tname = t.get("name")
+                  status_el = t.find("status")
+                  status = status_el.get("status") if status_el is not None else "UNKNOWN"
+                  if status == "PASS":
+                      total_passed += 1
+                      passed.append(f"- {tname}: ✅ PASS")
+                  else:
+                      total_failed += 1
+                      reason = short_reason(status_el.text if status_el is not None else "")
+                      log_preview = first_log_lines(status_el.text if status_el is not None else "")
+                      failed.append(f"- {tname}: ❌ FAIL\n  Reason: {reason}\n  🔍 Log:\n{log_preview}\n")
+              lines = [f"📦 Suite: {suite_name}"]
+              if passed: lines.append("\n".join(passed))
+              if failed:
+                  if passed: lines.append("")
+                  lines.append("\n".join(failed))
               sections.append("\n".join(lines))
-
-          overall = "FAILED" if total_passed + total_failed == 0 else ("SUCCESS" if total_failed == 0 else "FAILED")
-          if total_passed + total_failed == 0:
+          total = total_passed + total_failed
+          overall = "SUCCESS" if total > 0 and total_failed == 0 else "FAILED"
+          if total == 0:
               sections.append("- Result: ❌ no test outputs generated")
-
           header = textwrap.dedent(f"""
             📅 UTC: {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S}
-            📊 Total: {total_passed + total_failed} | Pass: {total_passed} | Fail: {total_failed}
+            🧩 Client: {client}
+            📊 Total: {total} | Pass: {total_passed} | Fail: {total_failed}
             📌 Status: {overall}
           """).strip()
-
           summary = header + "\n\n" + "\n\n".join(sections) + "\n"
           open("summary.txt", "w", encoding="utf-8").write(summary)
           open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8").write(summary)
 
-      # ───────────── ARTIFACTS & EMAIL ─────────────
-      - name: Upload reports
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
+        with:
+          name: logs-${{ matrix.shard }}
+          path: .log/*.zip
+          if-no-files-found: ignore
+
+      - name: 📎 Upload reports for ${{ matrix.shard }}
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: robot-artifacts
-          path: .log/
+          name: robot-artifacts-${{ matrix.shard }}
+          path: |
+            .log/${{ matrix.shard }}_*.zip
+            summary.txt
+          if-no-files-found: ignore
+          compression-level: 9
+          retention-days: 2
 
-      - name: Send e-mail summary
+      - name: 📧 Send e-mail summary for ${{ matrix.shard }}
         if: always()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -149,8 +206,9 @@ jobs:
           username: erica.cavalher@go-evio.com
           password: ${{ secrets.EMAIL_PASSWORD }}
           from: "Robot QA <erica.cavalher@go-evio.com>"
-          to: erica.cavalher@go-evio.com
-          subject: "Robot Framework Mobile Test Summary"
+          #to: erica.cavalher@go-evio.com
+          to: erica.cavalher@go-evio.com, pedro.ramoa@go-evio.com, diogo.marques@go-evio.com, carlos.almeida@go-evio.com, michel.lang@go-evio.com, armando.machado@go-evio.com
+          subject: ${{ format('Mobile Tests | {0} | {1}', fromJSON('{"evio":"EVIO","wl":"WL_ACP"}')[matrix.shard], github.ref_name) }}
           body: file://summary.txt
           attachments: |
-            .log/report.html
+            .log/${{ matrix.shard }}_*.zip
