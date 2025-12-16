@@ -8,13 +8,12 @@ pipeline {
   }
 
   environment {
-    EXECUTION_PROFILE = 'prepevol05'
-
-    // Katalon Studio Engine location (ajusta para o teu path real)
-    KATALON_HOME = 'C:\\Users\\adgi5appjenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0'
-
-    // ChromeDriver location (ajusta se necessário)
-    CHROME_DRIVER_PATH = 'D:\\jenkins\\work\\workspace\\GIS\\P2P\\p2p-tests\\Drivers\\chromedriver-win32'
+        // Default execution profile
+        EXECUTION_PROFILE = 'prepevol05'  // Test profile for execution
+        // Katalon Studio engine location
+        KATALON_HOME      = 'C:\\Users\\adgi5appjenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0'
+        // Updated ChromeDriver location
+        CHROME_DRIVER_PATH = 'D:\\jenkins\\work\\workspace\\GI5\\P2P\\p2p-tests\\Drivers\\chromedriver-win32'
   }
 
   stages {
@@ -40,36 +39,44 @@ pipeline {
       steps {
         script {
 
-          // ✅ LISTA DAS SUITES
-          // Troca/Completa os paths para as tuas 16 suites
           def suites = [
-            [name: 'LOGIN',    folder: 'LOGIN',    path: 'Test Suites/LOGIN_GENERIC/login_suite'],
+            [name: 'LOGIN', folder: 'LOGIN', path: 'Test Suites/LOGIN_GENERIC/login_suite'],
             [name: 'CATALOGS', folder: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
-            [name: 'INVOICES', folder: 'INVOICES', path: 'Test Suites/INVOICES/invoices_suite'],
-
-            // Exemplos para tu completares com as tuas suites reais
-            [name: 'PO_MODIFY',   folder: 'PO_MODIFY',   path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
-            [name: 'PO_CANCEL',   folder: 'PO_CANCEL',   path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
-            [name: 'PO_CLOSEALL', folder: 'PO_CLOSEALL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
-            [name: 'PO_RECEIPT',  folder: 'PO_RECEIPT',  path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
-            [name: 'PO_PERIMETER',folder: 'PO_PERIMETER',path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
-
-            [name: 'PR_PRS',          folder: 'PR_PRS',          path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PUT_YOUR_SUITE_HERE'],
-            [name: 'PR_PRS_2PHASE',   folder: 'PR_PRS_2PHASE',   path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PUT_YOUR_SUITE_HERE'],
-            [name: 'RECEPTION_REC',   folder: 'RECEPTION_REC',   path: 'Test Suites/NATIXIS_RECEPTION/PUT_YOUR_SUITE_HERE'],
-
-            // Continua até dar 16
-            [name: 'SUITE_12', folder: 'SUITE_12', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
-            [name: 'SUITE_13', folder: 'SUITE_13', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
-            [name: 'SUITE_14', folder: 'SUITE_14', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
-            [name: 'SUITE_15', folder: 'SUITE_15', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
-            [name: 'SUITE_16', folder: 'SUITE_16', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
+            [name: 'NATIXIS INVOICES', folder: 'NTX_INVOICES', path: 'Test Suites/NATIXIS_INVOICES/invoices_suite'],
+            [name: 'NATIXIS LONDON', folder: 'NTX_LONDON', path: 'Test Suites/NATIXIS_LONDON/natixis_london_suite'],
+            
+            [name: 'NATIXIS PURCHASE - MODIFY', folder: 'NTX_PUR_MODIFY', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite'],
+            [name: 'NATIXIS PURCHASE - CLOSE', folder: 'NTX_PUR_CLOSE', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approvers_cant_cancel_or_close_suite'],
+            [name: 'NATIXIS PURCHASE - CANCEL', folder: 'NTX_PUR_CANCEL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_cancel_suite'],
+            [name: 'NATIXIS PURCHASE - CLOSE ALL', folder: 'NTX_PUR_CLOSE_ALL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
+            [name: 'NATIXIS PURCHASE - RECEIPT', folder: 'NTX_PUR_RECEIPT', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite'],
+            [name: 'NATIXIS PURCHASE - PERIMETER', folder: 'NTX_PUR_PERIMETER', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite'],
+            
+            [name: 'NATIXIS PUR REQUEST', folder: 'NTX_REQ', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/purchase_request_suite'],
+            [name: 'NATIXIS PUR REQUEST - PR', folder: 'NTX_REQ_PR', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite'],
+            [name: 'NATIXIS PUR REQUEST- PR 2PHASE', folder: 'NTX_REQ_2PHASE', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite'],
+            [name: 'NATIXIS PUR REQUEST - PR 2PHASE INTEGRATED', folder: 'NTX_REQ_INTEGRATED', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_integrated_tsc'],
+            
+            [name: 'NATIXIS RECEPTION - REC'', folder: 'NTX_REC_REC', path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
+            [name: 'NATIXIS RECEPTION - ETL'', folder: 'NTX_REC_ETL', path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
+            
+            [name: 'TS COLLECTION - LOGIN', folder: 'TS_COL_LOGIN', path: 'Test Suites/TEST_SUITE_COLLECTIONS/login_and_invoices'],
+            [name: 'TS COLLECTION - OTHERS', folder: 'TS_COL_OTHERS', path: 'Test Suites/TEST_SUITE_COLLECTIONS/without_group'],
+            
+            [name: 'BPCE SI - DAHAT1', folder: 'BPCE_SI_DH1', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite'],
+            [name: 'BPCE SI - DAHAT2', folder: 'BPCE_SI_DH2', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite'],
+            [name: 'BPCE SI', folder: 'BPCE_SI', path: 'Test Suites/BPCE_SI/bpcesi_suite'],
+            
+            [name: 'BPCE ACHATS - INTEGRATED', folder: 'BPCE_ACHATS_INTEGRATED', path: 'Test Suites/BPCE_ACHATS/bpce_achats_integrated_tsc'],
+            [name: 'BPCE ACHATS', folder: 'BPCE_ACHATS', path: 'Test Suites/BPCE_ACHATS/bpce_achats_suite'],
+            [name: 'BPCE ACHATS - GS BANK INFORMATION', folder: 'BPCE_ACHATS_GS_BI', path: 'Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo'],
+            
+            [name: 'AUTOMATION - ACCEPT TERMS', folder: 'AUT_ACCEPT_TERM', path: 'Test Suites/OPS_AUTOMATION/accept_terms_suite'],
+            [name: 'AUTOMATION - AFTER REFRESH', folder: 'AUT_AFTER_REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
           for (def s : suites) {
-            stage("Run Katalon ${s.name} Suite") {
-
-              // ✅ não para o pipeline se 1 suite falhar
+            stage("RUN ${s.name} SUITE") {
               catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
 
                 def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
@@ -103,8 +110,6 @@ pipeline {
           bat """
             if exist ${zipName} del /f /q ${zipName}
           """
-
-          // zip só da pasta Reports
           zip zipFile: zipName, archive: false, dir: 'Reports'
 
           archiveArtifacts artifacts: zipName, allowEmptyArchive: true
@@ -121,7 +126,6 @@ pipeline {
       echo 'HEALTH CHECK FAILED - Review stage logs'
     }
     always {
-      // opcional: também arquiva todos os reports individuais, se quiser
       archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
     }
   }
