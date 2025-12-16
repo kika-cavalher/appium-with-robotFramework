@@ -18,16 +18,12 @@ pipeline {
 
     stage('Checkout') {
       steps {
-        script {
-          checkout([
-            $class: 'GitSCM',
-            branches: scm.branches,
-            userRemoteConfigs: scm.userRemoteConfigs,
-            extensions: scm.extensions,
-            changelog: false,
-            poll: false
-          ])
-        }
+        checkout(changelog: false, poll: false, scm: [
+          $class: 'GitSCM',
+          branches: scm.branches,
+          userRemoteConfigs: scm.userRemoteConfigs,
+          extensions: scm.extensions
+        ])
       }
     }
 
@@ -91,6 +87,8 @@ pipeline {
           for (def s : suites) {
             echo "Running suite: ${s.name}"
 
+            def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
+
             catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
               executeKatalon(
                 location: "${env.KATALON_HOME}",
@@ -100,7 +98,7 @@ pipeline {
                   "--browserType=\"Chrome\" " +
                   "--testSuitePath=\"${s.path}\" " +
                   "--consoleLog " +
-                  "--reportFolder=\"${env.WORKSPACE}\\\\Reports\\\\${s.folder}\" " +
+                  "--reportFolder=\"${reportFolder}\" " +
                   "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
                 version: '10.4.2',
                 x11Display: '',
@@ -116,13 +114,16 @@ pipeline {
       steps {
         script {
           def zipName = "reports_${env.BUILD_NUMBER}.zip"
-          bat "if exist ${zipName} del /f /q ${zipName}"
+
+          bat """
+            if exist "${zipName}" del /f /q "${zipName}"
+          """
+
           zip zipFile: zipName, archive: false, dir: 'Reports'
           archiveArtifacts artifacts: zipName, allowEmptyArchive: true
         }
       }
     }
-
   }
 
   post {
@@ -137,11 +138,3 @@ pipeline {
     }
   }
 }
-
-
-checkout(changelog: false, poll: false, scm: [
-  $class: 'GitSCM',
-  branches: scm.branches,
-  userRemoteConfigs: scm.userRemoteConfigs,
-  extensions: scm.extensions
-])
