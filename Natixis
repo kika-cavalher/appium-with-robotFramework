@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'GIS_SWDCFRNXGIS55817' }
+    agent { label 'GI5_SWDCFRNXGI55817' }
 
   options {
     timestamps()
@@ -7,18 +7,18 @@ pipeline {
     timeout(time: 45, unit: 'MINUTES')
   }
 
-  environment {
+    environment {
         // Default execution profile
         EXECUTION_PROFILE = 'prepevol05'  // Test profile for execution
         // Katalon Studio engine location
         KATALON_HOME      = 'C:\\Users\\adgi5appjenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0'
         // Updated ChromeDriver location
-        CHROME_DRIVER_PATH = 'D:\\jenkins\\work\\workspace\\GI5\\P2P\\p2p-tests\\Drivers\\chromedriver-win32'
-  }
+        CHROME_DRIVER_PATH = 'D:\\jenkins\\work\\workspace\\GI5\\P2P\\p2p-tests\\Drivers\\chromedriver-win32' 
+    }
 
   stages {
 
-    stage('Prepare Reports') {
+    stage('Create Reports') {
       steps {
         bat '''
           echo Cleaning previous Reports and zips...
@@ -57,8 +57,8 @@ pipeline {
             [name: 'NATIXIS PUR REQUEST- PR 2PHASE', folder: 'NTX_REQ_2PHASE', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite'],
             [name: 'NATIXIS PUR REQUEST - PR 2PHASE INTEGRATED', folder: 'NTX_REQ_INTEGRATED', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_integrated_tsc'],
             
-            [name: 'NATIXIS RECEPTION - REC'', folder: 'NTX_REC_REC', path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
-            [name: 'NATIXIS RECEPTION - ETL'', folder: 'NTX_REC_ETL', path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
+            [name: 'NATIXIS RECEPTION - REC', folder: 'NTX_REC_REC', path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
+            [name: 'NATIXIS RECEPTION - ETL', folder: 'NTX_REC_ETL', path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
             
             [name: 'TS COLLECTION - LOGIN', folder: 'TS_COL_LOGIN', path: 'Test Suites/TEST_SUITE_COLLECTIONS/login_and_invoices'],
             [name: 'TS COLLECTION - OTHERS', folder: 'TS_COL_OTHERS', path: 'Test Suites/TEST_SUITE_COLLECTIONS/without_group'],
@@ -75,28 +75,26 @@ pipeline {
             [name: 'AUTOMATION - AFTER REFRESH', folder: 'AUT_AFTER_REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
-          for (def s : suites) {
-            stage("RUN ${s.name} SUITE") {
-              catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-
-                def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
-
-                executeKatalon(
-                  location: "${env.KATALON_HOME}",
-                  executeArgs:
-                    "--projectPath=\"${env.WORKSPACE}\" " +
-                    "--executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-                    "--browserType=\"Chrome\" " +
-                    "--testSuitePath=\"${s.path}\" " +
-                    "--noHeadless --consoleLog " +
-                    "--reportFolder=\"${reportFolder}\" " +
-                    "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
-                  version: '10.4.2',
-                  x11Display: '',
-                  xvfbConfiguration: ''
-                )
-              }
-            }
+			for (def s : suites) {
+			  echo "Running suite: ${s.name}"
+			
+			  catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+			    executeKatalon(
+			      location: "${env.KATALON_HOME}",
+			      executeArgs:
+			        "--projectPath=\"${env.WORKSPACE}\" " +
+			        "--executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+			        "--browserType=\"Chrome\" " +
+			        "--testSuitePath=\"${s.path}\" " +
+			        "--consoleLog " +
+			        "--reportFolder=\"${env.WORKSPACE}\\\\Reports\\\\${s.folder}\" " +
+			        "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
+			      version: '10.4.2',
+			      x11Display: '',
+			      xvfbConfiguration: ''
+			    )
+			  }
+			}
           }
         }
       }
@@ -128,25 +126,5 @@ pipeline {
     always {
       archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
     }
-  }
-}
-for (def s : suites) {
-  echo "Running suite: ${s.name}"
-
-  catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-    executeKatalon(
-      location: "${env.KATALON_HOME}",
-      executeArgs:
-        "--projectPath=\"${env.WORKSPACE}\" " +
-        "--executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-        "--browserType=\"Chrome\" " +
-        "--testSuitePath=\"${s.path}\" " +
-        "--consoleLog " +
-        "--reportFolder=\"${env.WORKSPACE}\\\\Reports\\\\${s.folder}\" " +
-        "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
-      version: '10.4.2',
-      x11Display: '',
-      xvfbConfiguration: ''
-    )
   }
 }
