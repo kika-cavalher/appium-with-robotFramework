@@ -5,6 +5,7 @@ pipeline {
     timestamps()
     disableConcurrentBuilds()
     timeout(time: 45, unit: 'MINUTES')
+    skipDefaultCheckout(true)
   }
 
   environment {
@@ -14,6 +15,21 @@ pipeline {
   }
 
   stages {
+
+    stage('Checkout') {
+      steps {
+        script {
+          checkout([
+            $class: 'GitSCM',
+            branches: scm.branches,
+            userRemoteConfigs: scm.userRemoteConfigs,
+            extensions: scm.extensions,
+            changelog: false,
+            poll: false
+          ])
+        }
+      }
+    }
 
     stage('Create Reports') {
       steps {
@@ -100,9 +116,7 @@ pipeline {
       steps {
         script {
           def zipName = "reports_${env.BUILD_NUMBER}.zip"
-
           bat "if exist ${zipName} del /f /q ${zipName}"
-
           zip zipFile: zipName, archive: false, dir: 'Reports'
           archiveArtifacts artifacts: zipName, allowEmptyArchive: true
         }
