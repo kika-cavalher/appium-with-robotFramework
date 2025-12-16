@@ -18,12 +18,10 @@ pipeline {
 
     stage('Checkout') {
       steps {
-        checkout(changelog: false, poll: false, scm: [
-          $class: 'GitSCM',
-          branches: scm.branches,
-          userRemoteConfigs: scm.userRemoteConfigs,
-          extensions: scm.extensions
-        ])
+        script {
+          // IMPORTANT: changelog/poll must be OUTSIDE the GitSCM map
+          checkout(changelog: false, poll: false, scm: scm)
+        }
       }
     }
 
@@ -47,7 +45,6 @@ pipeline {
     stage('Run All Katalon Suites') {
       steps {
         script {
-
           def suites = [
             [name: 'LOGIN', folder: 'LOGIN', path: 'Test Suites/LOGIN_GENERIC/login_suite'],
             [name: 'CATALOGS', folder: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
@@ -84,27 +81,41 @@ pipeline {
             [name: 'AUTOMATION - AFTER REFRESH', folder: 'AUT_AFTER_REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
+          def anyFailed = false
+
           for (def s : suites) {
             echo "Running suite: ${s.name}"
 
             def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
 
-            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-              executeKatalon(
-                location: "${env.KATALON_HOME}",
-                executeArgs:
-                  "--projectPath=\"${env.WORKSPACE}\" " +
-                  "--executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-                  "--browserType=\"Chrome\" " +
-                  "--testSuitePath=\"${s.path}\" " +
-                  "--consoleLog " +
-                  "--reportFolder=\"${reportFolder}\" " +
-                  "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
-                version: '10.4.2',
-                x11Display: '',
-                xvfbConfiguration: ''
-              )
+            bat """
+              if not exist "${reportFolder}" mkdir "${reportFolder}"
+            """
+
+            def cmd =
+              "\"${env.KATALON_HOME}\\katalonc.exe\" " +
+              "-noSplash -runMode=console " +
+              "-projectPath=\"${env.WORKSPACE}\" " +
+              "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+              "-browserType=\"Chrome\" " +
+              "-testSuitePath=\"${s.path}\" " +
+              "-consoleLog " +
+              "-reportFolder=\"${reportFolder}\" " +
+              "-reportFileName=\"report\" " +
+              "-chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\""
+
+            int status = bat(returnStatus: true, script: cmd)
+
+            if (status != 0) {
+              anyFailed = true
+              echo "Suite FAILED: ${s.name} (exit code: ${status})"
+            } else {
+              echo "Suite OK: ${s.name}"
             }
+          }
+
+          if (anyFailed) {
+            currentBuild.result = 'UNSTABLE'
           }
         }
       }
@@ -114,11 +125,7 @@ pipeline {
       steps {
         script {
           def zipName = "reports_${env.BUILD_NUMBER}.zip"
-
-          bat """
-            if exist "${zipName}" del /f /q "${zipName}"
-          """
-
+          bat "if exist \"${zipName}\" del /f /q \"${zipName}\""
           zip zipFile: zipName, archive: false, dir: 'Reports'
           archiveArtifacts artifacts: zipName, allowEmptyArchive: true
         }
@@ -129,6 +136,9 @@ pipeline {
   post {
     success {
       echo 'HEALTH CHECK PASSED'
+    }
+    unstable {
+      echo 'HEALTH CHECK UNSTABLE - Some suites failed, but pipeline continued'
     }
     failure {
       echo 'HEALTH CHECK FAILED - Review stage logs'
