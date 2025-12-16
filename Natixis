@@ -1,0 +1,128 @@
+pipeline {
+  agent { label 'GIS_SWDCFRNXGIS55817' }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 45, unit: 'MINUTES')
+  }
+
+  environment {
+    EXECUTION_PROFILE = 'prepevol05'
+
+    // Katalon Studio Engine location (ajusta para o teu path real)
+    KATALON_HOME = 'C:\\Users\\adgi5appjenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0'
+
+    // ChromeDriver location (ajusta se necessário)
+    CHROME_DRIVER_PATH = 'D:\\jenkins\\work\\workspace\\GIS\\P2P\\p2p-tests\\Drivers\\chromedriver-win32'
+  }
+
+  stages {
+
+    stage('Prepare Reports') {
+      steps {
+        bat '''
+          echo Cleaning previous Reports and zips...
+
+          if exist Reports rmdir /s /q Reports
+          mkdir Reports
+
+          del /f /q reports*.zip 2>nul
+
+          rem Optional cleanup: kill stuck Katalon processes
+          taskkill /F /IM katalonc.exe /T 2>nul
+          taskkill /F /IM katalon.exe /T 2>nul
+        '''
+      }
+    }
+
+    stage('Run All Katalon Suites') {
+      steps {
+        script {
+
+          // ✅ LISTA DAS SUITES
+          // Troca/Completa os paths para as tuas 16 suites
+          def suites = [
+            [name: 'LOGIN',    folder: 'LOGIN',    path: 'Test Suites/LOGIN_GENERIC/login_suite'],
+            [name: 'CATALOGS', folder: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
+            [name: 'INVOICES', folder: 'INVOICES', path: 'Test Suites/INVOICES/invoices_suite'],
+
+            // Exemplos para tu completares com as tuas suites reais
+            [name: 'PO_MODIFY',   folder: 'PO_MODIFY',   path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
+            [name: 'PO_CANCEL',   folder: 'PO_CANCEL',   path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
+            [name: 'PO_CLOSEALL', folder: 'PO_CLOSEALL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
+            [name: 'PO_RECEIPT',  folder: 'PO_RECEIPT',  path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
+            [name: 'PO_PERIMETER',folder: 'PO_PERIMETER',path: 'Test Suites/NATIXIS_PURCHASE_ORDER/PUT_YOUR_SUITE_HERE'],
+
+            [name: 'PR_PRS',          folder: 'PR_PRS',          path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PUT_YOUR_SUITE_HERE'],
+            [name: 'PR_PRS_2PHASE',   folder: 'PR_PRS_2PHASE',   path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PUT_YOUR_SUITE_HERE'],
+            [name: 'RECEPTION_REC',   folder: 'RECEPTION_REC',   path: 'Test Suites/NATIXIS_RECEPTION/PUT_YOUR_SUITE_HERE'],
+
+            // Continua até dar 16
+            [name: 'SUITE_12', folder: 'SUITE_12', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
+            [name: 'SUITE_13', folder: 'SUITE_13', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
+            [name: 'SUITE_14', folder: 'SUITE_14', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
+            [name: 'SUITE_15', folder: 'SUITE_15', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
+            [name: 'SUITE_16', folder: 'SUITE_16', path: 'Test Suites/PUT_YOUR_SUITE_HERE'],
+          ]
+
+          for (def s : suites) {
+            stage("Run Katalon ${s.name} Suite") {
+
+              // ✅ não para o pipeline se 1 suite falhar
+              catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+
+                def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
+
+                executeKatalon(
+                  location: "${env.KATALON_HOME}",
+                  executeArgs:
+                    "--projectPath=\"${env.WORKSPACE}\" " +
+                    "--executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+                    "--browserType=\"Chrome\" " +
+                    "--testSuitePath=\"${s.path}\" " +
+                    "--noHeadless --consoleLog " +
+                    "--reportFolder=\"${reportFolder}\" " +
+                    "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
+                  version: '10.4.2',
+                  x11Display: '',
+                  xvfbConfiguration: ''
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Zip Reports') {
+      steps {
+        script {
+          def zipName = "reports_${env.BUILD_NUMBER}.zip"
+
+          bat """
+            if exist ${zipName} del /f /q ${zipName}
+          """
+
+          // zip só da pasta Reports
+          zip zipFile: zipName, archive: false, dir: 'Reports'
+
+          archiveArtifacts artifacts: zipName, allowEmptyArchive: true
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo 'HEALTH CHECK PASSED'
+    }
+    failure {
+      echo 'HEALTH CHECK FAILED - Review stage logs'
+    }
+    always {
+      // opcional: também arquiva todos os reports individuais, se quiser
+      archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
+    }
+  }
+}
