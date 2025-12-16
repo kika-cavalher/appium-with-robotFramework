@@ -130,3 +130,23 @@ pipeline {
     }
   }
 }
+for (def s : suites) {
+  echo "Running suite: ${s.name}"
+
+  catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+    executeKatalon(
+      location: "${env.KATALON_HOME}",
+      executeArgs:
+        "--projectPath=\"${env.WORKSPACE}\" " +
+        "--executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+        "--browserType=\"Chrome\" " +
+        "--testSuitePath=\"${s.path}\" " +
+        "--consoleLog " +
+        "--reportFolder=\"${env.WORKSPACE}\\\\Reports\\\\${s.folder}\" " +
+        "--chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\"",
+      version: '10.4.2',
+      x11Display: '',
+      xvfbConfiguration: ''
+    )
+  }
+}
