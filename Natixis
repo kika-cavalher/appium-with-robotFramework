@@ -16,10 +16,20 @@ pipeline {
 
   stages {
 
+    stage('Prepare Git') {
+      steps {
+        bat '''
+          rem Workaround for Git 2.52+ where "git whatchanged" requires --i-still-use-this
+          rem Jenkins Git plugin may still call "git whatchanged" to compute changelog
+          git config --global alias.whatchanged "log --raw --no-merges"
+          git --version
+        '''
+      }
+    }
+
     stage('Checkout') {
       steps {
         script {
-          // Disable changelog to avoid Git 2.52 failing on "git whatchanged"
           checkout(changelog: false, poll: false, scm: scm)
         }
       }
@@ -124,98 +134,6 @@ pipeline {
     always {
       echo "Pipeline execution completed"
       archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-pipeline {
-  agent { label 'GI5_SWDCFRNXGI55817' }
-
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-  }
-
-  stages {
-
-    stage('Identify Current Agent and User') {
-      steps {
-        bat '''
-          echo === AGENT AND USER INFO ===
-          echo Hostname: %COMPUTERNAME%
-          echo.
-          echo Logged user:
-          whoami
-          echo.
-          echo Current directory:
-          cd
-          echo ============================
-        '''
-      }
-    }
-
-    stage('Search for Katalon Installation') {
-      steps {
-        bat '''
-          echo === SEARCHING FOR KATALON RUNTIME ENGINE ===
-          echo This may take a few minutes, please wait...
-          echo.
-
-          rem Try common installation folders first
-          if exist "C:\\Users\\jenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0\\katalonc.exe" (
-            echo ✅ Found at: C:\\Users\\jenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0
-            exit /b 0
-          )
-
-          if exist "C:\\Program Files\\Katalon_Studio_Engine\\katalonc.exe" (
-            echo ✅ Found at: C:\\Program Files\\Katalon_Studio_Engine
-            exit /b 0
-          )
-
-          if exist "D:\\Katalon_Studio_Engine\\katalonc.exe" (
-            echo ✅ Found at: D:\\Katalon_Studio_Engine
-            exit /b 0
-          )
-
-          rem If not found in common paths, perform a recursive search (this may take time)
-          echo 🔍 Performing broader search in C:\\Users (please wait)...
-          dir "C:\\Users" /s /b | findstr /i "katalonc.exe" > katalon_search_results.txt
-
-          if exist katalon_search_results.txt (
-            echo.
-            echo --- Potential matches found ---
-            type katalon_search_results.txt
-            echo --- End of results ---
-          ) else (
-            echo ❌ No katalonc.exe found on this agent.
-          )
-        '''
-      }
-    }
-
-    stage('Environment Variable Check') {
-      steps {
-        bat '''
-          echo === ENVIRONMENT VARIABLE CHECK ===
-          echo.
-          if defined KATALON_HOME (
-            echo ✅ KATALON_HOME variable exists: %KATALON_HOME%
-          ) else (
-            echo ⚠️ No KATALON_HOME variable defined on this agent.
-          )
-        '''
-      }
     }
   }
 }
