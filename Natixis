@@ -24,25 +24,29 @@ pipeline {
       }
     }
 
-    stage('Create Reports') {
-      steps {
-        bat '''
-          @echo off
-          echo Cleaning previous Reports and zips...
+stage('Create Reports') {
+  steps {
+    script {
+      int rc = bat(returnStatus: true, script: '''
+        @echo off
+        echo Cleaning previous Reports and zips...
 
-          if exist "Reports" rmdir /s /q "Reports"
-          mkdir "Reports"
+        if exist "Reports" rmdir /s /q "Reports"
+        mkdir "Reports"
 
-          del /f /q "reports*.zip" >nul 2>nul
+        del /f /q "reports*.zip" >nul 2>nul
 
-          rem Optional cleanup: kill stuck Katalon processes (NEVER fail the build)
-          taskkill /F /IM katalonc.exe /T >nul 2>nul || echo katalonc.exe not running
-          taskkill /F /IM katalon.exe  /T >nul 2>nul || echo katalon.exe not running
+        rem Optional cleanup: kill stuck Katalon processes (never fail the pipeline)
+        taskkill /F /IM katalonc.exe /T >nul 2>nul
+        taskkill /F /IM katalon.exe  /T >nul 2>nul
 
-          exit /b 0
-        '''
-      }
+        exit /b 0
+      ''')
+
+      echo "Create Reports return code (ignored): ${rc}"
     }
+  }
+}
 
     stage('Run All Katalon Suites') {
       steps {
@@ -152,99 +156,3 @@ pipeline {
     }
   }
 }
-
-
-Started by user erica.cavalher-ext@natixis.com
-Running as erica.cavalher-ext@natixis.com
-Obtained jenkinsfile.groovy from git https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git
-[Pipeline] Start of Pipeline
-[Pipeline] node
-Running on GI5_SWDCFRNXGI55817 in D:\jenkins\work\workspace\GI5\P2P\p2p-tests
-[Pipeline] {
-[Pipeline] withEnv
-[Pipeline] {
-[Pipeline] timestamps
-[Pipeline] {
-[Pipeline] timeout
-10:53:52  Timeout set to expire in 45 min
-[Pipeline] {
-[Pipeline] stage
-[Pipeline] { (Checkout)
-[Pipeline] checkout
-10:53:52  The recommended git tool is: git
-10:53:52  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
-10:53:53  Fetching changes from the remote Git repository
-10:53:52   > git rev-parse --resolve-git-dir D:\jenkins\work\workspace\GI5\P2P\p2p-tests\.git # timeout=10
-10:53:53   > git config remote.origin.url https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git # timeout=10
-10:53:53  Fetching upstream changes from https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git
-10:53:53   > git --version # timeout=10
-10:53:53   > git --version # 'git version 2.52.0.windows.1'
-10:53:53  using GIT_ASKPASS to set credentials 
-10:53:53   > git fetch --tags --force --progress -- https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git +refs/heads/*:refs/remotes/origin/* # timeout=10
-10:53:56  Checking out Revision d4812a5652b8d2d6949534661dcd7d60bdaac829 (refs/remotes/origin/dev)
-10:53:56   > git rev-parse "refs/remotes/origin/dev^{commit}" # timeout=10
-10:53:56   > git config core.sparsecheckout # timeout=10
-10:53:57   > git checkout -f d4812a5652b8d2d6949534661dcd7d60bdaac829 # timeout=10
-10:53:57  Commit message: "Refactor checkout and report folder handling"
-10:53:57  The recommended git tool is: git
-10:53:57  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
-10:53:57  The recommended git tool is: git
-10:53:57  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
-10:53:57  [GitCheckoutListener] Recording commits of 'git https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git'
-10:53:57  [GitCheckoutListener] Found previous build 'GI5/P2P/p2p-tests #107' that contains recorded Git commits
-10:53:57  [GitCheckoutListener] -> Starting recording of new commits since 'd4812a5'
-10:53:57  [GitCheckoutListener] -> Using head commit 'd4812a5' as starting point
-10:53:57  [GitCheckoutListener] -> Git commit decorator could not be created for SCM 'hudson.plugins.git.GitSCM@79e49ea0'
-10:53:57  [GitCheckoutListener] -> No new commits found
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Create Reports)
-[Pipeline] bat
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>echo Cleaning previous Reports and zips... 
-10:53:58  Cleaning previous Reports and zips...
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if exist Reports rmdir /s /q Reports 
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>mkdir Reports 
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>del /f /q reports*.zip  2>nul 
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>rem Optional cleanup: kill stuck Katalon processes 
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>taskkill /F /IM katalonc.exe /T  2>nul 
-10:53:57   > git rev-parse "HEAD^{commit}" # timeout=10
-10:53:58  
-10:53:58  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>taskkill /F /IM katalon.exe /T  2>nul 
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Run All Katalon Suites)
-Stage "Run All Katalon Suites" skipped due to earlier failure(s)
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Zip Reports)
-Stage "Zip Reports" skipped due to earlier failure(s)
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Declarative: Post Actions)
-[Pipeline] archiveArtifacts
-10:53:59  Archiving artifacts
-[Pipeline] echo
-10:53:59  HEALTH CHECK FAILED - Review stage logs
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] }
-[Pipeline] // timeout
-[Pipeline] }
-[Pipeline] // timestamps
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // node
-[Pipeline] End of Pipeline
-ERROR: script returned exit code 128
-Finished: FAILURE
