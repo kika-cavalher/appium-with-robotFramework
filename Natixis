@@ -57,7 +57,7 @@ pipeline {
 
           for (def s : suites) {
             stage("Suite ${s.name}") {
-              echo "A executar suite: ${s.name}"
+              echo "Running suite: ${s.name}"
               bat "if not exist \"Reports\\${s.name}\\${env.BUILD_NUMBER}\" mkdir \"Reports\\${s.name}\\${env.BUILD_NUMBER}\""
 
               try {
@@ -75,20 +75,20 @@ pipeline {
                   x11Display: '',
                   xvfbConfiguration: ''
                 )
-                echo "Suite passou: ${s.name}"
+                echo "Suite PASSED: ${s.name}"
               } catch (err) {
                 anyFailed = true
                 currentBuild.result = 'UNSTABLE'
-                echo "Suite falhou: ${s.name}"
-                echo "Erro: ${err}"
+                echo "Suite FAILED: ${s.name}"
+                echo "Error: ${err}"
               }
             }
           }
 
           if (anyFailed) {
-            echo "Pipeline terminou com falhas"
+            echo "Pipeline finished with failures"
           } else {
-            echo "Pipeline terminou sem falhas"
+            echo "Pipeline finished successfully"
           }
         }
       }
