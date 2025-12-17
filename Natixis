@@ -4,7 +4,7 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
-    timeout(time: 45, unit: 'MINUTES')
+    timeout(time: 120, unit: 'MINUTES')
     skipDefaultCheckout(true)
   }
 
@@ -15,81 +15,66 @@ pipeline {
   }
 
   stages {
+
     stage('Checkout') {
       steps {
-        // Checkout mais simples possível
-        bat '''
-          git config --global user.email "jenkins@natixis.com"
-          git config --global user.name "Jenkins"
-          git checkout dev
-          git pull origin dev
-        '''
+        script {
+          // Disable changelog to avoid Git 2.52 failing on "git whatchanged"
+          checkout(changelog: false, poll: false, scm: scm)
+        }
       }
     }
 
-    stage('Prepare Reports') {
-      steps {
-        bat '''
-          echo Cleaning previous Reports and zips...
-
-          if exist "Reports" rmdir /s /q "Reports"
-          if not exist "Reports" mkdir "Reports"
-
-          del /f /q "reports*.zip" 2>nul || echo No zip to delete
-
-          rem Kill Katalon only if running (avoid exit code 128)
-          taskkill /F /IM katalonc.exe /T 2>nul || echo katalonc.exe not running
-          taskkill /F /IM katalon.exe  /T 2>nul || echo katalon.exe not running
-        '''
-      }
-    }
-
-    stage('Run All Katalon Suites') {
+    stage('Run Katalon Suites') {
       steps {
         script {
           def suites = [
-            [name: 'LOGIN', folder: 'LOGIN', path: 'Test Suites/LOGIN_GENERIC/login_suite'],
-            [name: 'CATALOGS', folder: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
-            [name: 'NATIXIS INVOICES', folder: 'NTX_INVOICES', path: 'Test Suites/NATIXIS_INVOICES/invoices_suite'],
-            [name: 'NATIXIS LONDON', folder: 'NTX_LONDON', path: 'Test Suites/NATIXIS_LONDON/natixis_london_suite'],
+            [name: 'LOGIN', path: 'Test Suites/LOGIN_GENERIC/login_suite'],
+            [name: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
+            [name: 'NATIXIS INVOICES', path: 'Test Suites/NATIXIS_INVOICES/invoices_suite'],
+            [name: 'NATIXIS LONDON', path: 'Test Suites/NATIXIS_LONDON/natixis_london_suite'],
 
-            [name: 'NATIXIS PURCHASE - MODIFY', folder: 'NTX_PUR_MODIFY', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite'],
-            [name: 'NATIXIS PURCHASE - CLOSE', folder: 'NTX_PUR_CLOSE', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approvers_cant_cancel_or_close_suite'],
-            [name: 'NATIXIS PURCHASE - CANCEL', folder: 'NTX_PUR_CANCEL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_cancel_suite'],
-            [name: 'NATIXIS PURCHASE - CLOSE ALL', folder: 'NTX_PUR_CLOSE_ALL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
-            [name: 'NATIXIS PURCHASE - RECEIPT', folder: 'NTX_PUR_RECEIPT', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite'],
-            [name: 'NATIXIS PURCHASE - PERIMETER', folder: 'NTX_PUR_PERIMETER', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite'],
+            [name: 'NATIXIS PURCHASE - MODIFY', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite'],
+            [name: 'NATIXIS PURCHASE - CLOSE', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approvers_cant_cancel_or_close_suite'],
+            [name: 'NATIXIS PURCHASE - CANCEL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_cancel_suite'],
+            [name: 'NATIXIS PURCHASE - CLOSE ALL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
+            [name: 'NATIXIS PURCHASE - RECEIPT', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite'],
+            [name: 'NATIXIS PURCHASE - PERIMETER', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite'],
 
-            [name: 'NATIXIS PUR REQUEST', folder: 'NTX_REQ', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/purchase_request_suite'],
-            [name: 'NATIXIS PUR REQUEST - PR', folder: 'NTX_REQ_PR', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite'],
-            [name: 'NATIXIS PUR REQUEST - PR 2PHASE', folder: 'NTX_REQ_2PHASE', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite'],
-            [name: 'NATIXIS PUR REQUEST - PR 2PHASE INTEGRATED', folder: 'NTX_REQ_INTEGRATED', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_integrated_tsc'],
+            [name: 'NATIXIS PUR REQUEST', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/purchase_request_suite'],
+            [name: 'NATIXIS PUR REQUEST - PR', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite'],
+            [name: 'NATIXIS PUR REQUEST - PR 2PHASE', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite'],
+            [name: 'NATIXIS PUR REQUEST - PR 2PHASE INTEGRATED', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_integrated_tsc'],
 
-            [name: 'NATIXIS RECEPTION - REC', folder: 'NTX_REC_REC', path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
-            [name: 'NATIXIS RECEPTION - ETL', folder: 'NTX_REC_ETL', path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
+            [name: 'NATIXIS RECEPTION - REC', path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
+            [name: 'NATIXIS RECEPTION - ETL', path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
 
-            [name: 'TS COLLECTION - LOGIN', folder: 'TS_COL_LOGIN', path: 'Test Suites/TEST_SUITE_COLLECTIONS/login_and_invoices'],
-            [name: 'TS COLLECTION - OTHERS', folder: 'TS_COL_OTHERS', path: 'Test Suites/TEST_SUITE_COLLECTIONS/without_group'],
+            [name: 'TS COLLECTION - LOGIN', path: 'Test Suites/TEST_SUITE_COLLECTIONS/login_and_invoices'],
+            [name: 'TS COLLECTION - OTHERS', path: 'Test Suites/TEST_SUITE_COLLECTIONS/without_group'],
 
-            [name: 'BPCE SI - DAHAT1', folder: 'BPCE_SI_DH1', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite'],
-            [name: 'BPCE SI - DAHAT2', folder: 'BPCE_SI_DH2', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite'],
-            [name: 'BPCE SI', folder: 'BPCE_SI', path: 'Test Suites/BPCE_SI/bpcesi_suite'],
+            [name: 'BPCE SI - DAHAT1', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite'],
+            [name: 'BPCE SI - DAHAT2', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite'],
+            [name: 'BPCE SI', path: 'Test Suites/BPCE_SI/bpcesi_suite'],
 
-            [name: 'BPCE ACHATS - INTEGRATED', folder: 'BPCE_ACHATS_INTEGRATED', path: 'Test Suites/BPCE_ACHATS/bpce_achats_integrated_tsc'],
-            [name: 'BPCE ACHATS', folder: 'BPCE_ACHATS', path: 'Test Suites/BPCE_ACHATS/bpce_achats_suite'],
-            [name: 'BPCE ACHATS - GS BANK INFORMATION', folder: 'BPCE_ACHATS_GS_BI', path: 'Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo'],
+            [name: 'BPCE ACHATS - INTEGRATED', path: 'Test Suites/BPCE_ACHATS/bpce_achats_integrated_tsc'],
+            [name: 'BPCE ACHATS', path: 'Test Suites/BPCE_ACHATS/bpce_achats_suite'],
+            [name: 'BPCE ACHATS - GS BANK INFORMATION', path: 'Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo'],
 
-            [name: 'AUTOMATION - ACCEPT TERMS', folder: 'AUT_ACCEPT_TERM', path: 'Test Suites/OPS_AUTOMATION/accept_terms_suite'],
-            [name: 'AUTOMATION - AFTER REFRESH', folder: 'AUT_AFTER_REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
+            [name: 'AUTOMATION - ACCEPT TERMS', path: 'Test Suites/OPS_AUTOMATION/accept_terms_suite'],
+            [name: 'AUTOMATION - AFTER REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
+          def reportsDir = "${env.WORKSPACE}\\Reports"
+          bat "if not exist \"${reportsDir}\" mkdir \"${reportsDir}\""
+
           def anyFailed = false
+          def ok = []
+          def ko = []
 
           for (def s : suites) {
             echo "Running suite: ${s.name}"
 
-            def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
-            bat "if not exist \"${reportFolder}\" mkdir \"${reportFolder}\""
+            def safeName = s.name.replaceAll(/[^A-Za-z0-9]+/, '_')
 
             def cmd =
               "\"${env.KATALON_HOME}\\katalonc.exe\" " +
@@ -99,19 +84,33 @@ pipeline {
               "-browserType=\"Chrome\" " +
               "-testSuitePath=\"${s.path}\" " +
               "-consoleLog " +
-              "-reportFolder=\"${reportFolder}\" " +
-              "-reportFileName=\"report\" " +
+              "-reportFolder=\"${reportsDir}\" " +
+              "-reportFileName=\"${safeName}\" " +
               "-chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\""
 
             int status = bat(returnStatus: true, script: cmd)
 
             if (status != 0) {
               anyFailed = true
+              ko.add(s.name)
               echo "Suite FAILED: ${s.name} (exit code: ${status})"
             } else {
+              ok.add(s.name)
               echo "Suite OK: ${s.name}"
             }
           }
+
+          echo "========================================"
+          echo "EXECUTION SUMMARY"
+          echo "========================================"
+          echo "Successful suites: ${ok.size()}"
+          ok.each { echo "  - ${it}" }
+
+          echo "Failed suites: ${ko.size()}"
+          ko.each { echo "  - ${it}" }
+
+          echo "Total suites: ${suites.size()}"
+          echo "========================================"
 
           if (anyFailed) {
             currentBuild.result = 'UNSTABLE'
@@ -119,28 +118,12 @@ pipeline {
         }
       }
     }
-
-    stage('Zip Reports') {
-      steps {
-        script {
-          def zipName = "reports_${env.BUILD_NUMBER}.zip"
-
-          powershell """
-            \$zip = '${zipName}'
-            if (Test-Path \$zip) { Remove-Item \$zip -Force }
-            if (Test-Path 'Reports') { Compress-Archive -Path 'Reports\\*' -DestinationPath \$zip -Force }
-          """
-
-          archiveArtifacts artifacts: zipName, allowEmptyArchive: true
-        }
-      }
-    }
   }
 
   post {
-    success  { echo 'HEALTH CHECK PASSED' }
-    unstable { echo 'HEALTH CHECK UNSTABLE - Some suites failed, but pipeline continued' }
-    failure  { echo 'HEALTH CHECK FAILED - Review stage logs' }
-    always   { archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true }
+    always {
+      echo "Pipeline execution completed"
+      archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
+    }
   }
 }
