@@ -1,158 +1,136 @@
-pipeline {
-  agent { label 'GI5_SWDCFRNXGI55817' }
+Skip to content
+Search (CTRL+K)
+erica.cavalher-ext@natixis.com
 
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-    timeout(time: 45, unit: 'MINUTES')
-    skipDefaultCheckout(true)
-  }
+log out
+Dashboard
+GI5
+P2P
+p2p-tests
+#109
+Status
+Changes
+Console Output
+View as plain text
+Edit Build Information
+Timings
 
-  environment {
-    EXECUTION_PROFILE  = 'prepevol05'
-    KATALON_HOME       = 'C:\\Users\\adgi5appjenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0'
-    CHROME_DRIVER_PATH = 'D:\\jenkins\\work\\workspace\\GI5\\P2P\\p2p-tests\\Drivers\\chromedriver-win32'
-  }
+Open Blue Ocean
 
-  stages {
-
-    stage('Checkout') {
-      steps {
-        script {
-          checkout(changelog: false, poll: false, scm: scm)
-        }
-      }
-    }
-
-stage('Create Reports') {
-  steps {
-    script {
-      int rc = bat(returnStatus: true, script: '''
-        @echo off
-        echo Cleaning previous Reports and zips...
-
-        if exist "Reports" rmdir /s /q "Reports"
-        mkdir "Reports"
-
-        del /f /q "reports*.zip" >nul 2>nul
-
-        rem Optional cleanup: kill stuck Katalon processes (never fail the pipeline)
-        taskkill /F /IM katalonc.exe /T >nul 2>nul
-        taskkill /F /IM katalon.exe  /T >nul 2>nul
-
-        exit /b 0
-      ''')
-
-      echo "Create Reports return code (ignored): ${rc}"
-    }
-  }
-}
-
-    stage('Run All Katalon Suites') {
-      steps {
-        script {
-
-          def suites = [
-            [name: 'LOGIN', folder: 'LOGIN', path: 'Test Suites/LOGIN_GENERIC/login_suite'],
-            [name: 'CATALOGS', folder: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
-            [name: 'NATIXIS INVOICES', folder: 'NTX_INVOICES', path: 'Test Suites/NATIXIS_INVOICES/invoices_suite'],
-            [name: 'NATIXIS LONDON', folder: 'NTX_LONDON', path: 'Test Suites/NATIXIS_LONDON/natixis_london_suite'],
-
-            [name: 'NATIXIS PURCHASE - MODIFY', folder: 'NTX_PUR_MODIFY', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite'],
-            [name: 'NATIXIS PURCHASE - CLOSE', folder: 'NTX_PUR_CLOSE', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approvers_cant_cancel_or_close_suite'],
-            [name: 'NATIXIS PURCHASE - CANCEL', folder: 'NTX_PUR_CANCEL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_cancel_suite'],
-            [name: 'NATIXIS PURCHASE - CLOSE ALL', folder: 'NTX_PUR_CLOSE_ALL', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
-            [name: 'NATIXIS PURCHASE - RECEIPT', folder: 'NTX_PUR_RECEIPT', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite'],
-            [name: 'NATIXIS PURCHASE - PERIMETER', folder: 'NTX_PUR_PERIMETER', path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite'],
-
-            [name: 'NATIXIS PUR REQUEST', folder: 'NTX_REQ', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/purchase_request_suite'],
-            [name: 'NATIXIS PUR REQUEST - PR', folder: 'NTX_REQ_PR', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite'],
-            [name: 'NATIXIS PUR REQUEST - PR 2PHASE', folder: 'NTX_REQ_2PHASE', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite'],
-            [name: 'NATIXIS PUR REQUEST - PR 2PHASE INTEGRATED', folder: 'NTX_REQ_INTEGRATED', path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_integrated_tsc'],
-
-            [name: 'NATIXIS RECEPTION - REC', folder: 'NTX_REC_REC', path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
-            [name: 'NATIXIS RECEPTION - ETL', folder: 'NTX_REC_ETL', path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
-
-            [name: 'TS COLLECTION - LOGIN', folder: 'TS_COL_LOGIN', path: 'Test Suites/TEST_SUITE_COLLECTIONS/login_and_invoices'],
-            [name: 'TS COLLECTION - OTHERS', folder: 'TS_COL_OTHERS', path: 'Test Suites/TEST_SUITE_COLLECTIONS/without_group'],
-
-            [name: 'BPCE SI - DAHAT1', folder: 'BPCE_SI_DH1', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite'],
-            [name: 'BPCE SI - DAHAT2', folder: 'BPCE_SI_DH2', path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite'],
-            [name: 'BPCE SI', folder: 'BPCE_SI', path: 'Test Suites/BPCE_SI/bpcesi_suite'],
-
-            [name: 'BPCE ACHATS - INTEGRATED', folder: 'BPCE_ACHATS_INTEGRATED', path: 'Test Suites/BPCE_ACHATS/bpce_achats_integrated_tsc'],
-            [name: 'BPCE ACHATS', folder: 'BPCE_ACHATS', path: 'Test Suites/BPCE_ACHATS/bpce_achats_suite'],
-            [name: 'BPCE ACHATS - GS BANK INFORMATION', folder: 'BPCE_ACHATS_GS_BI', path: 'Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo'],
-
-            [name: 'AUTOMATION - ACCEPT TERMS', folder: 'AUT_ACCEPT_TERM', path: 'Test Suites/OPS_AUTOMATION/accept_terms_suite'],
-            [name: 'AUTOMATION - AFTER REFRESH', folder: 'AUT_AFTER_REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
-          ]
-
-          def anyFailed = false
-
-          for (def s : suites) {
-            echo "Running suite: ${s.name}"
-
-            def reportFolder = "${env.WORKSPACE}\\Reports\\${s.folder}"
-
-            bat """
-              if not exist "${reportFolder}" mkdir "${reportFolder}"
-              exit /b 0
-            """
-
-            def cmd =
-              "\"${env.KATALON_HOME}\\katalonc.exe\" " +
-              "-noSplash -runMode=console " +
-              "-projectPath=\"${env.WORKSPACE}\" " +
-              "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-              "-browserType=\"Chrome\" " +
-              "-testSuitePath=\"${s.path}\" " +
-              "-consoleLog " +
-              "-reportFolder=\"${reportFolder}\" " +
-              "-reportFileName=\"report\" " +
-              "-chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\""
-
-            int status = bat(returnStatus: true, script: cmd)
-
-            if (status != 0) {
-              anyFailed = true
-              echo "Suite FAILED: ${s.name} (exit code: ${status})"
-            } else {
-              echo "Suite OK: ${s.name}"
-            }
-          }
-
-          if (anyFailed) {
-            currentBuild.result = 'UNSTABLE'
-          }
-        }
-      }
-    }
-
-    stage('Zip Reports') {
-      steps {
-        script {
-          def zipName = "reports_${env.BUILD_NUMBER}.zip"
-          bat "if exist \"${zipName}\" del /f /q \"${zipName}\""
-          zip zipFile: zipName, archive: false, dir: 'Reports'
-          archiveArtifacts artifacts: zipName, allowEmptyArchive: true
-        }
-      }
-    }
-  }
-
-  post {
-    success {
-      echo 'HEALTH CHECK PASSED'
-    }
-    unstable {
-      echo 'HEALTH CHECK UNSTABLE - Some suites failed, but pipeline continued'
-    }
-    failure {
-      echo 'HEALTH CHECK FAILED - Review stage logs'
-    }
-    always {
-      archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
-    }
-  }
-}
+Embeddable Build Status
+Thread Dump
+Pause/resume
+Replay
+Pipeline Steps
+Workspaces
+Rebuild
+Previous Build
+Timestamps
+View as plain text
+System clock time
+Use browser timezone
+Elapsed time
+None
+Timestamps
+View as plain text
+System clock time
+Use browser timezone
+Elapsed time
+None
+Console Output
+Started by user erica.cavalher-ext@natixis.com
+Running as erica.cavalher-ext@natixis.com
+Obtained jenkinsfile.groovy from git https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on GI5_SWDCFRNXGI55817 in D:\jenkins\work\workspace\GI5\P2P\p2p-tests
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] timestamps
+[Pipeline] {
+[Pipeline] timeout
+11:03:45  Timeout set to expire in 45 min
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout)
+[Pipeline] checkout
+11:03:45  The recommended git tool is: git
+11:03:45  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
+11:03:45  Fetching changes from the remote Git repository
+11:03:45   > git rev-parse --resolve-git-dir D:\jenkins\work\workspace\GI5\P2P\p2p-tests\.git # timeout=10
+11:03:45   > git config remote.origin.url https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git # timeout=10
+11:03:45  Fetching upstream changes from https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git
+11:03:45   > git --version # timeout=10
+11:03:45   > git --version # 'git version 2.52.0.windows.1'
+11:03:45  using GIT_ASKPASS to set credentials 
+11:03:45   > git fetch --tags --force --progress -- https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+11:03:49  Checking out Revision d4812a5652b8d2d6949534661dcd7d60bdaac829 (refs/remotes/origin/dev)
+11:03:49  Commit message: "Refactor checkout and report folder handling"
+11:03:49  The recommended git tool is: git
+11:03:49  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
+11:03:49  The recommended git tool is: git
+11:03:49  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
+11:03:49   > git rev-parse "refs/remotes/origin/dev^{commit}" # timeout=10
+11:03:49   > git config core.sparsecheckout # timeout=10
+11:03:49   > git checkout -f d4812a5652b8d2d6949534661dcd7d60bdaac829 # timeout=10
+11:03:49  [GitCheckoutListener] Recording commits of 'git https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git'
+11:03:49  [GitCheckoutListener] Found previous build 'GI5/P2P/p2p-tests #108' that contains recorded Git commits
+11:03:49  [GitCheckoutListener] -> Starting recording of new commits since 'd4812a5'
+11:03:49  [GitCheckoutListener] -> Using head commit 'd4812a5' as starting point
+11:03:49  [GitCheckoutListener] -> Git commit decorator could not be created for SCM 'hudson.plugins.git.GitSCM@73682399'
+11:03:49  [GitCheckoutListener] -> No new commits found
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Create Reports)
+[Pipeline] bat
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>echo Cleaning previous Reports and zips... 
+11:03:50  Cleaning previous Reports and zips...
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if exist Reports rmdir /s /q Reports 
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>mkdir Reports 
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>del /f /q reports*.zip  2>nul 
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>rem Optional cleanup: kill stuck Katalon processes 
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>taskkill /F /IM katalonc.exe /T  2>nul 
+11:03:49   > git rev-parse "HEAD^{commit}" # timeout=10
+11:03:50  
+11:03:50  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>taskkill /F /IM katalon.exe /T  2>nul 
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Run All Katalon Suites)
+Stage "Run All Katalon Suites" skipped due to earlier failure(s)
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Zip Reports)
+Stage "Zip Reports" skipped due to earlier failure(s)
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] archiveArtifacts
+11:03:52  Archiving artifacts
+[Pipeline] echo
+11:03:52  HEALTH CHECK FAILED - Review stage logs
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // timeout
+[Pipeline] }
+[Pipeline] // timestamps
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+ERROR: script returned exit code 128
+Finished: FAILURE
+REST API
+Jenkins 2.401.1
