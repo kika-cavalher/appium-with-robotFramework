@@ -1,6 +1,12 @@
 pipeline {
   agent { label 'GI5_SWDCFRNXGI55817' }
 
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 45, unit: 'MINUTES')
+  }
+
   environment {
     KATALON_HOME      = 'C:/Users/adgi5appjenkins/Documents/Katalon_Studio_Engine_Windows_64-8.1.0'
     EXECUTION_PROFILE = 'prepevol05'
@@ -12,10 +18,37 @@ pipeline {
       steps {
         script {
           def suites = [
-            [name: 'LOGIN',            path: 'Test Suites/LOGIN_GENERIC/login_suite'],
-            [name: 'CATALOGS',         path: 'Test Suites/CATALOGS/catalogs_suite'],
-            [name: 'NATIXIS_INVOICES', path: 'Test Suites/NATIXIS_INVOICES/invoices_suite']
-            // ... adiciona o resto aqui
+            [name: 'LOGIN',                         path: 'Test Suites/LOGIN_GENERIC/login_suite'],
+            [name: 'CATALOGS',                      path: 'Test Suites/CATALOGS/catalogs_suite'],
+            [name: 'NATIXIS_INVOICES',              path: 'Test Suites/NATIXIS_INVOICES/invoices_suite'],
+            [name: 'NATIXIS_LONDON',                path: 'Test Suites/NATIXIS_LONDON/natixis_london_suite'],
+
+            [name: 'NATIXIS_PURCHASE_MODIFY',       path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite'],
+            [name: 'NATIXIS_PURCHASE_CLOSE',        path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_approvers_cant_cancel_or_close_suite'],
+            [name: 'NATIXIS_PURCHASE_CANCEL',       path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_cancel_suite'],
+            [name: 'NATIXIS_PURCHASE_CLOSE_ALL',    path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite'],
+            [name: 'NATIXIS_PURCHASE_RECEIPT',      path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite'],
+            [name: 'NATIXIS_PURCHASE_PERIMETER',    path: 'Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite'],
+
+            [name: 'NATIXIS_PR',                    path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite'],
+            [name: 'NATIXIS_PR_2PHASE',             path: 'Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite'],
+
+            [name: 'NATIXIS_RECEPTION_REC',         path: 'Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite'],
+            [name: 'NATIXIS_RECEPTION_ETL',         path: 'Test Suites/NATIXIS_RECEPTION/reception_etl_suite'],
+
+            [name: 'TS_COLLECTION_LOGIN',           path: 'Test Suites/TEST_SUITE_COLLECTIONS/login_and_invoices'],
+            [name: 'TS_COLLECTION_OTHERS',          path: 'Test Suites/TEST_SUITE_COLLECTIONS/without_group'],
+
+            [name: 'BPCE_SI_DAHAT1',                path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite'],
+            [name: 'BPCE_SI_DAHAT2',                path: 'Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite'],
+            [name: 'BPCE_SI',                       path: 'Test Suites/BPCE_SI/bpcesi_suite'],
+
+            [name: 'BPCE_ACHATS_INTEGRATED',        path: 'Test Suites/BPCE_ACHATS/bpce_achats_integrated_tsc'],
+            [name: 'BPCE_ACHATS',                   path: 'Test Suites/BPCE_ACHATS/bpce_achats_suite'],
+            [name: 'BPCE_ACHATS_GS_BANK_INFO',      path: 'Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo'],
+
+            [name: 'OPS_ACCEPT_TERMS',              path: 'Test Suites/OPS_AUTOMATION/accept_terms_suite'],
+            [name: 'OPS_AFTER_REFRESH',             path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
           def anyFailed = false
@@ -23,28 +56,41 @@ pipeline {
           for (def s : suites) {
             echo "Running suite: ${s.name}"
 
+            def stageFailed = false
             catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
               executeKatalon(
                 location: "${env.KATALON_HOME}",
-                executeArgs: "-projectPath=\"${env.WORKSPACE}\" " +
-                             "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-                             "-browserType=\"${env.BROWSER_TYPE}\" " +
-                             "-testSuitePath=\"${s.path}\" " +
-                             "-consoleLog " +
-                             "-reportFolder=\"Reports\" " +
-                             "-reportFileName=\"${s.name}\"",
+                executeArgs:
+                  "-projectPath=\"${env.WORKSPACE}\" " +
+                  "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+                  "-browserType=\"${env.BROWSER_TYPE}\" " +
+                  "-testSuitePath=\"${s.path}\" " +
+                  "-consoleLog " +
+                  "-reportFolder=\"Reports/${s.name}/${env.BUILD_NUMBER}\" " +
+                  "-reportFileName=\"${s.name}\"",
                 version: '',
                 x11Display: '',
                 xvfbConfiguration: ''
               )
+              stageFailed = false
             }
 
             if (currentBuild.currentResult == 'FAILURE') {
+              stageFailed = true
+              currentBuild.result = 'SUCCESS'
+            }
+
+            if (stageFailed) {
               anyFailed = true
+              echo "Suite failed: ${s.name}"
+            } else {
+              echo "Suite passed: ${s.name}"
             }
           }
 
-          if (anyFailed) currentBuild.result = 'UNSTABLE'
+          if (anyFailed) {
+            currentBuild.result = 'UNSTABLE'
+          }
         }
       }
     }
@@ -52,6 +98,7 @@ pipeline {
 
   post {
     always {
+      echo "Pipeline completed"
       archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
     }
   }
