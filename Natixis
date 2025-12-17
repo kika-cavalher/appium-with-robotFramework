@@ -17,22 +17,13 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Checkout simples sem changelog
-        checkout([
-          $class: 'GitSCM',
-          branches: [[name: '*/dev']],
-          extensions: [[
-            $class: 'LocalBranch',
-            localBranch: '**'
-          ]],
-          userRemoteConfigs: [[
-            credentialsId: '965eceec-b3a3-4ec5-8820-a857c87dd80f',
-            url: 'https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git'
-          ]],
-          // Desativa completamente o changelog
-          doGenerateSubmoduleConfigurations: false,
-          extensions: []
-        ])
+        // Checkout mais simples possível
+        bat '''
+          git config --global user.email "jenkins@natixis.com"
+          git config --global user.name "Jenkins"
+          git checkout dev
+          git pull origin dev
+        '''
       }
     }
 
