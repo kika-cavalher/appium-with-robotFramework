@@ -1,91 +1,105 @@
 pipeline {
-    agent { label 'GI5_SWDCFRNXGI55817' }
+  agent { label 'GI5_SWDCFRNXGI55817' }
 
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-        timeout(time: 45, unit: 'MINUTES')
+  options {
+    timestamps()
+    // Removido para evitar bloqueio entre builds
+    // disableConcurrentBuilds()
+    // Removido para não “matar” execuções longas
+    // timeout(time: 45, unit: 'MINUTES')
+  }
+
+  environment {
+    CHROME_BIN        = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    EXECUTION_PROFILE = 'prepevol05'
+    KATALON_HOME      = 'C:\\Users\\adgi5appjenkins\\Documents\\Katalon_Studio_Engine_Windows_64-8.1.0'
+  }
+
+  stages {
+
+    stage('PreClean (light)') {
+      steps {
+        powershell '''
+          #=================
+          # Setup & Logging
+          #=================
+          $ErrorActionPreference = "Continue"
+          function Log([string]$m) { Write-Host "[preclean] $m" }
+
+          Log ("User         : " + $env:USERNAME)
+          Log ("Workspace    : " + $env:WORKSPACE)
+          Log ("KATALON_HOME : " + $env:KATALON_HOME)
+
+          #=================
+          # 1) Kill only webdriver leftovers
+          #=================
+          $driverNames = @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')
+          foreach ($exe in $driverNames) {
+            try {
+              cmd /c "taskkill /IM $exe /F /T >NUL 2>&1 & exit /b 0" | Out-Null
+              Log ("Killed (if existed): " + $exe)
+            } catch {
+              Log ("Skip kill: " + $exe)
+            }
+          }
+
+          #=================
+          # 2) Clean .katalon locks/pids only if no Katalon running
+          #=================
+          $katalonRunning = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                            Where-Object { $_.Name -in @('katalonc.exe','eclipsec.exe') } |
+                            Select-Object -First 1
+
+          if ($katalonRunning) {
+            Log "INFO: Katalon process detected. Skipping .katalon lock cleanup."
+          } else {
+            $khome = Join-Path $env:USERPROFILE '.katalon'
+            if (Test-Path $khome) {
+              $targets = Get-ChildItem -Path $khome -Recurse -File -ErrorAction SilentlyContinue |
+                         Where-Object {
+                           ($_.Name -like '*.pid' -or $_.Name -like '*.lock' -or $_.Name -like '*usage*') -and
+                           ($_.FullName -notlike '*.lic')
+                         }
+
+              if ($targets) {
+                $count = 0
+                foreach ($t in $targets) {
+                  try {
+                    Remove-Item $t.FullName -Force -ErrorAction Stop
+                    $count++
+                    Log ("Removed: " + $t.FullName)
+                  } catch {
+                    Log ("Remove failed: " + $t.FullName + " -> " + $_.Exception.Message)
+                  }
+                }
+                Log ("Lock files removed: " + $count)
+              } else {
+                Log ("No lock/pid/usage files found under: " + $khome)
+              }
+            } else {
+              Log ("No .katalon folder at: " + $khome)
+            }
+          }
+
+          Log "PreClean done."
+        '''
+
+        cleanWs deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true
+      }
     }
 
-    environment {
-        // Browser for HTML→PDF helper
-        CHROME_BIN        = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-        // Default execution profile
-        EXECUTION_PROFILE = 'prepevol05'
-        // Engine location (single source of truth)
-        KATALON_HOME      = 'C:/Users/adgi5appjenkins/Documents/Katalon_Studio_Engine_Windows_64-8.1.0'
+    stage('Checkout P2P project') {
+      steps {
+        git credentialsId: '40130d40-5b6c-4c9d-9314-ae82746b7456',
+            url: 'https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git',
+            branch: 'master'
+      }
     }
-
-    stages {
-        stage('PreClean (light)') {
-            options { timeout(time: 2, unit: 'MINUTES') }
-            steps {
-                powershell '''
-                    #=================
-                    # Setup & Logging
-                    #=================
-                    $ErrorActionPreference = "SilentlyContinue"
-                    function Log([string]$m) { Write-Host "[preclean] $m" }
-
-                    Log ("User         : " + $env:USERNAME)
-                    Log ("Workspace    : " + $env:WORKSPACE)
-                    Log ("KATALON_HOME : " + $env:KATALON_HOME)
-
-                    #=================
-                    # 1) Do NOT kill Katalon/Java here
-                    #    Only ensure webdriver leftovers are gone
-                    #=================
-                    $driverNames = @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')
-                    foreach ($exe in $driverNames) {
-                        cmd /c "taskkill /IM $exe /F /T >NUL 2>&1 & exit /b 0" | Out-Null
-                    }
-
-                    #=================
-                    # 2) Clean .katalon locks/pids/usage ONLY if no Katalon running
-                    #=================
-                    $katalonRunning = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-                                      Where-Object { $_.Name -in @('katalonc.exe','eclipsec.exe') } |
-                                      Select-Object -First 1
-                    if ($katalonRunning) {
-                        Log "INFO: Katalon process detected. Skipping .katalon lock cleanup."
-                    } else {
-                        $khome = Join-Path $env:USERPROFILE '.katalon'
-                        if (Test-Path $khome) {
-                            $targets = Get-ChildItem -Path $khome -Recurse -Include @('*.pid','*.lock','*usage*') -File -ErrorAction SilentlyContinue |
-                                       Where-Object { $_.FullName -notlike '*.lic' }
-                            if ($targets) {
-                                $count = 0
-                                foreach ($t in $targets) {
-                                    try { Remove-Item $t.FullName -Force -ErrorAction Stop; $count++; Log ("Removed: " + $t.FullName) }
-                                    catch { Log ("Remove failed: " + $t.FullName + " -> " + $_.Exception.Message) }
-                                }
-                                Log ("Lock files removed: $count")
-                            } else {
-                                Log ("No lock/pid/usage files found under: " + $khome)
-                            }
-                        } else {
-                            Log ("No .katalon folder at: " + $khome)
-                        }
-                    }
-
-                    Log "PreClean done."
-                '''
-                // Keep workspace tidy but don't fail build if there's nothing
-                cleanWs deleteDirs: true, disableDeferredWipeout: true, notFailBuild: true
-            }
-        }
-
-        stage('Checkout P2P project') {
-            steps {
-                git credentialsId: '40130d40-5b6c-4c9d-9314-ae82746b7456',
-                    url: 'https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git',
-                    branch: 'master'
-            }
-        }
 
     stage('Run Katalon Suites') {
       steps {
         script {
+
           def suites = [
             [name: 'LOGIN', path: 'Test Suites/LOGIN_GENERIC/login_suite'],
             [name: 'CATALOGS', path: 'Test Suites/CATALOGS/catalogs_suite'],
@@ -120,29 +134,36 @@ pipeline {
             [name: 'AUTOMATION - AFTER REFRESH', path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
-          def reportsDir = "${env.WORKSPACE}\\Reports"
-          bat "if not exist \"${reportsDir}\" mkdir \"${reportsDir}\""
+          def reportsRoot = "${env.WORKSPACE}\\Reports"
+          bat "if not exist \"${reportsRoot}\" mkdir \"${reportsRoot}\""
+
+          def runId = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())
 
           def anyFailed = false
           def ok = []
           def ko = []
 
           for (def s : suites) {
+
             echo "Running suite: ${s.name}"
 
             def safeName = s.name.replaceAll(/[^A-Za-z0-9]+/, '_')
+            def suiteReportDir = "${reportsRoot}\\${safeName}\\${runId}"
+
+            bat "if not exist \"${suiteReportDir}\" mkdir \"${suiteReportDir}\""
+
+            def katalonExe = "${env.KATALON_HOME}\\katalonc.exe"
 
             def cmd =
-              "\"${env.KATALON_HOME}\\katalonc.exe\" " +
+              "\"${katalonExe}\" " +
               "-noSplash -runMode=console " +
               "-projectPath=\"${env.WORKSPACE}\" " +
               "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
               "-browserType=\"Chrome\" " +
               "-testSuitePath=\"${s.path}\" " +
               "-consoleLog " +
-              "-reportFolder=\"${reportsDir}\" " +
-              "-reportFileName=\"${safeName}\" " +
-              "-chromeDriverPath=\"${env.CHROME_DRIVER_PATH}\""
+              "-reportFolder=\"${suiteReportDir}\" " +
+              "-reportFileName=\"${safeName}\""
 
             int status = bat(returnStatus: true, script: cmd)
 
@@ -161,11 +182,11 @@ pipeline {
           echo "========================================"
           echo "Successful suites: ${ok.size()}"
           ok.each { echo "  - ${it}" }
-
           echo "Failed suites: ${ko.size()}"
           ko.each { echo "  - ${it}" }
-
           echo "Total suites: ${suites.size()}"
+          echo "Reports root: ${reportsRoot}"
+          echo "Run ID: ${runId}"
           echo "========================================"
 
           if (anyFailed) {
@@ -179,7 +200,7 @@ pipeline {
   post {
     always {
       echo "Pipeline execution completed"
-      archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'Reports/**', allowEmptyArchive: true
     }
   }
 }
