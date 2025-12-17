@@ -139,3 +139,157 @@ pipeline {
     always   { archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true }
   }
 }
+
+
+
+
+Started by user erica.cavalher-ext@natixis.com
+Running as erica.cavalher-ext@natixis.com
+Obtained jenkinsfile.groovy from git https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on GI5_SWDCFRNXGI55817 in D:\jenkins\work\workspace\GI5\P2P\p2p-tests
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] timestamps
+[Pipeline] {
+[Pipeline] timeout
+11:09:54  Timeout set to expire in 45 min
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout)
+[Pipeline] checkout
+11:09:54  The recommended git tool is: git
+11:09:54  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
+11:09:54  Fetching changes from the remote Git repository
+11:09:54   > git rev-parse --resolve-git-dir D:\jenkins\work\workspace\GI5\P2P\p2p-tests\.git # timeout=10
+11:09:54   > git config remote.origin.url https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git # timeout=10
+11:09:54  Fetching upstream changes from https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git
+11:09:54   > git --version # timeout=10
+11:09:54   > git --version # 'git version 2.52.0.windows.1'
+11:09:54  using GIT_ASKPASS to set credentials 
+11:09:54   > git fetch --tags --force --progress -- https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+11:09:58  Checking out Revision 0f03bdb6268f3ff29550cf7394ff075de0d59862 (refs/remotes/origin/dev)
+11:09:58   > git rev-parse "refs/remotes/origin/dev^{commit}" # timeout=10
+11:09:58   > git config core.sparsecheckout # timeout=10
+11:09:58   > git checkout -f 0f03bdb6268f3ff29550cf7394ff075de0d59862 # timeout=10
+11:09:58  Commit message: "Implement Jenkins pipeline for Katalon tests"
+11:09:58   > git rev-list --no-walk d4812a5652b8d2d6949534661dcd7d60bdaac829 # timeout=10
+11:09:59  'git whatchanged' is nominated for removal.
+11:09:59  
+11:09:59  hint: You can replace 'git whatchanged <opts>' with:
+11:09:59  hint:	git log <opts> --raw --no-merges
+11:09:59  hint: Or make an alias:
+11:09:59  hint:	git config set --global alias.whatchanged 'log --raw --no-merges'
+11:09:59  
+11:09:59  If you still use this command, here's what you can do:
+11:09:59  
+11:09:59  - read https://git-scm.com/docs/BreakingChanges.html
+11:09:59  - check if anyone has discussed this on the mailing
+11:09:59    list and if they came up with something that can
+11:09:59    help you: https://lore.kernel.org/git/?q=git%20whatchanged
+11:09:59  - send an email to <git@vger.kernel.org> to let us
+11:09:59    know that you still use this command and were unable
+11:09:59    to determine a suitable replacement
+11:09:59  
+11:09:59  fatal: refusing to run without --i-still-use-this
+11:09:59  ERROR: Unable to retrieve changeset
+11:09:59  hudson.plugins.git.GitException: Error: git whatchanged --no-abbrev -M "--format=commit %H%ntree %T%nparent %P%nauthor %aN <%aE> %ai%ncommitter %cN <%cE> %ci%n%n%w(0,4,4)%B" -n 1024 0f03bdb6268f3ff29550cf7394ff075de0d59862 "^d4812a5652b8d2d6949534661dcd7d60bdaac829" in D:\jenkins\work\workspace\GI5\P2P\p2p-tests
+11:09:59  	at org.jenkinsci.plugins.gitclient.CliGitAPIImpl$6.execute(CliGitAPIImpl.java:1321)
+11:09:59  	at org.jenkinsci.plugins.gitclient.RemoteGitImpl$CommandInvocationHandler$GitCommandMasterToSlaveCallable.call(RemoteGitImpl.java:170)
+11:09:59  	at org.jenkinsci.plugins.gitclient.RemoteGitImpl$CommandInvocationHandler$GitCommandMasterToSlaveCallable.call(RemoteGitImpl.java:161)
+11:09:59  	at hudson.remoting.UserRequest.perform(UserRequest.java:211)
+11:09:59  	at hudson.remoting.UserRequest.perform(UserRequest.java:54)
+11:09:59  	at hudson.remoting.Request$2.run(Request.java:377)
+11:09:59  	at hudson.remoting.InterceptingExecutorService.lambda$wrap$0(InterceptingExecutorService.java:78)
+11:09:59  	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+11:09:59  	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+11:09:59  	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+11:09:59  	at hudson.remoting.Engine$1.lambda$newThread$0(Engine.java:125)
+11:09:59  	at java.base/java.lang.Thread.run(Thread.java:834)
+11:09:59  	Suppressed: hudson.remoting.Channel$CallSiteStackTrace: Remote call to JNLP4-connect connection from swdcfrnxgi55817.fr.intranet/100.85.227.83:50197
+11:09:59  		at hudson.remoting.Channel.attachCallSiteStackTrace(Channel.java:1784)
+11:09:59  		at hudson.remoting.UserRequest$ExceptionResponse.retrieve(UserRequest.java:356)
+11:09:59  		at hudson.remoting.Channel.call(Channel.java:1000)
+11:09:59  		at org.jenkinsci.plugins.gitclient.RemoteGitImpl$CommandInvocationHandler.execute(RemoteGitImpl.java:153)
+11:09:59  		at jdk.internal.reflect.GeneratedMethodAccessor731.invoke(Unknown Source)
+11:09:59  		at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+11:09:59  		at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+11:09:59  		at org.jenkinsci.plugins.gitclient.RemoteGitImpl$CommandInvocationHandler.invoke(RemoteGitImpl.java:138)
+11:09:59  		at com.sun.proxy.$Proxy133.execute(Unknown Source)
+11:09:59  		at hudson.plugins.git.GitSCM.computeChangeLog(GitSCM.java:1504)
+11:09:59  		at hudson.plugins.git.GitSCM.checkout(GitSCM.java:1388)
+11:09:59  		at org.jenkinsci.plugins.workflow.steps.scm.SCMStep.checkout(SCMStep.java:129)
+11:09:59  		at org.jenkinsci.plugins.workflow.steps.scm.SCMStep$StepExecutionImpl.run(SCMStep.java:97)
+11:09:59  		at org.jenkinsci.plugins.workflow.steps.scm.SCMStep$StepExecutionImpl.run(SCMStep.java:84)
+11:09:59  		at org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution.lambda$start$0(SynchronousNonBlockingStepExecution.java:47)
+11:09:59  		at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:515)
+11:09:59  		at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+11:09:59  		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+11:09:59  		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+11:09:59  		at java.base/java.lang.Thread.run(Thread.java:829)
+11:09:59  The recommended git tool is: git
+11:09:59  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
+11:09:59  The recommended git tool is: git
+11:09:59  using credential 965eceec-b3a3-4ec5-8820-a857c87dd80f
+11:09:59  [GitCheckoutListener] Recording commits of 'git https://bitbucket-mut.mycloud.intrabpce.fr/scm/gi5/p2p.git'
+11:09:59  [GitCheckoutListener] Found previous build 'GI5/P2P/p2p-tests #109' that contains recorded Git commits
+11:09:59  [GitCheckoutListener] -> Starting recording of new commits since 'd4812a5'
+11:09:59  [GitCheckoutListener] -> Using head commit '0f03bdb' as starting point
+11:09:59  [GitCheckoutListener] -> Git commit decorator could not be created for SCM 'hudson.plugins.git.GitSCM@5c48df68'
+11:09:59  [GitCheckoutListener] -> Recorded 3 new commits
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Prepare Reports)
+[Pipeline] bat
+11:09:59   > git rev-parse "HEAD^{commit}" # timeout=10
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>echo Cleaning previous Reports and zips... 
+11:10:00  Cleaning previous Reports and zips...
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if exist "Reports" rmdir /s /q "Reports" 
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports" mkdir "Reports" 
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>del /f /q "reports*.zip"   2>nul  || echo No zip to delete 
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>rem Kill Katalon only if running (avoid exit code 128) 
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>taskkill /F /IM katalonc.exe /T   2>nul  || echo katalonc.exe not running 
+11:10:00  katalonc.exe not running
+11:10:00  
+11:10:00  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>taskkill /F /IM katalon.exe  /T   2>nul  || echo katalon.exe not running 
+11:10:00  katalon.exe not running
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Run All Katalon Suites)
+Stage "Run All Katalon Suites" skipped due to earlier failure(s)
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Zip Reports)
+Stage "Zip Reports" skipped due to earlier failure(s)
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] archiveArtifacts
+11:10:02  Archiving artifacts
+[Pipeline] echo
+11:10:03  HEALTH CHECK FAILED - Review stage logs
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // timeout
+[Pipeline] }
+[Pipeline] // timestamps
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+ERROR: script returned exit code 128
+Finished: FAILURE
