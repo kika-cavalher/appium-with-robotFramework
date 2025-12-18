@@ -4,7 +4,7 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
-    timeout(time: 45, unit: 'MINUTES')
+    timeout(time: 8, unit: 'HOURS')
   }
 
   environment {
@@ -57,32 +57,196 @@ pipeline {
             stage("Suite ${s.name}") {
               echo "Running suite: ${s.name}"
 
+              def reportDir = "Reports\\${s.name}\\${env.BUILD_NUMBER}"
+              bat "if not exist \"${reportDir}\" mkdir \"${reportDir}\""
+
+              def lockDir         = "C:\\JenkinsLocks"
+              def lockFile        = "${lockDir}\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
+              def staleLockHours  = 12
+
               catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                 try {
-                  def reportDir = "Reports\\${s.name}\\${env.BUILD_NUMBER}"
-                  bat "if not exist \"${reportDir}\" mkdir \"${reportDir}\""
+                  timeout(time: 110, unit: 'MINUTES') {
 
-                  executeKatalon(
-                    location: "${env.KATALON_HOME}",
-                    executeArgs:
-                      "-projectPath=\"${projectPath}\" " +
-                      "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-                      "-browserType=\"${env.BROWSER_TYPE}\" " +
-                      "-testSuitePath=\"${s.path}\" " +
-                      "-consoleLog " +
-                      "-reportFolder=\"${reportDir}\" " +
-                      "-reportFileName=\"${s.name}\"",
-                    version: '',
-                    x11Display: '',
-                    xvfbConfiguration: ''
-                  )
+                    // One Katalon at a time (node-wide) + stale lock recovery
+                    powershell """
+                      \$ErrorActionPreference = 'Stop'
+                      if (!(Test-Path '${lockDir}')) { New-Item -ItemType Directory -Path '${lockDir}' | Out-Null }
 
-                  echo "Suite PASSED: ${s.name}"
-                } catch (err) {
+                      if (Test-Path '${lockFile}') {
+                        try {
+                          \$ageHours = ((Get-Date) - (Get-Item '${lockFile}').LastWriteTime).TotalHours
+                          if (\$ageHours -gt ${staleLockHours}) {
+                            Remove-Item -Force '${lockFile}'
+                          }
+                        } catch {}
+                      }
+
+                      \$acquired = \$false
+                      while (-not \$acquired) {
+                        try {
+                          \$fs = [System.IO.File]::Open('${lockFile}', 'OpenOrCreate', 'ReadWrite', 'None')
+                          \$writer = New-Object System.IO.StreamWriter(\$fs)
+                          \$writer.WriteLine("JOB=${env.JOB_NAME}")
+                          \$writer.WriteLine("BUILD=${env.BUILD_NUMBER}")
+                          \$writer.WriteLine("NODE=${env.NODE_NAME}")
+                          \$writer.WriteLine("SUITE=${s.name}")
+                          \$writer.WriteLine("TIME=" + (Get-Date).ToString("s"))
+                          \$writer.Flush()
+                          \$acquired = \$true
+                        } catch {
+                          Start-Sleep -Seconds 5
+                        }
+                      }
+                    """
+
+                    // Pre-clean: remove leftovers ONLY tied to this project (prevents session leakage)
+                    powershell """
+                      \$ErrorActionPreference = 'SilentlyContinue'
+                      \$proj = '${projectPath}'
+                      \$all  = Get-CimInstance Win32_Process
+
+                      \$katalon = \$all | Where-Object {
+                        (\$_.Name -match 'katalon|katalonc|java') -and (\$_.CommandLine -like "*\$proj*")
+                      }
+                      \$katalonPids = @(\$katalon | Select-Object -ExpandProperty ProcessId)
+
+                      \$drivers = \$all | Where-Object {
+                        (\$_.Name -in @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')) -and (\$katalonPids -contains \$_.ParentProcessId)
+                      }
+                      \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
+
+                      \$browsers = \$all | Where-Object {
+                        (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and ( (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId) )
+                      }
+
+                      if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                      if (\$drivers)  { \$drivers  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                      if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                    """
+
+                    // Run Katalon with infra-safe retry (only for known flaky infrastructure errors)
+                    def attempt = 1
+                    def maxAttempts = 2
+                    def lastErrText = ''
+
+                    while (attempt <= maxAttempts) {
+                      try {
+                        echo "Katalon attempt ${attempt}/${maxAttempts} for suite ${s.name}"
+
+                        executeKatalon(
+                          location: "${env.KATALON_HOME}",
+                          executeArgs:
+                            "-projectPath=\"${projectPath}\" " +
+                            "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+                            "-browserType=\"${env.BROWSER_TYPE}\" " +
+                            "-testSuitePath=\"${s.path}\" " +
+                            "-consoleLog " +
+                            "-reportFolder=\"${reportDir}\" " +
+                            "-reportFileName=\"${s.name}\"",
+                          version: '',
+                          x11Display: '',
+                          xvfbConfiguration: ''
+                        )
+
+                        echo "Suite PASSED: ${s.name}"
+                        break
+                      } catch (err) {
+                        lastErrText = "${err}"
+                        def errLower = lastErrText.toLowerCase()
+
+                        def isInfra =
+                          errLower.contains('sessionnotcreated') ||
+                          errLower.contains('chrome failed to start') ||
+                          errLower.contains('unable to create new service') ||
+                          errLower.contains('timed out') ||
+                          errLower.contains('timeout') ||
+                          errLower.contains('connection refused') ||
+                          errLower.contains('disconnected') ||
+                          errLower.contains('cannot find chrome binary') ||
+                          errLower.contains('webdrivere') ||
+                          errLower.contains('sockettimeoutexception') ||
+                          errLower.contains('katalon engine has stopped') ||
+                          errLower.contains('process unexpectedly closed')
+
+                        echo "Suite error on attempt ${attempt}: ${lastErrText}"
+
+                        // Always cleanup between attempts, but only for this project
+                        powershell """
+                          \$ErrorActionPreference = 'SilentlyContinue'
+                          \$proj = '${projectPath}'
+                          \$all  = Get-CimInstance Win32_Process
+
+                          \$katalon = \$all | Where-Object {
+                            (\$_.Name -match 'katalon|katalonc|java') -and (\$_.CommandLine -like "*\$proj*")
+                          }
+                          \$katalonPids = @(\$katalon | Select-Object -ExpandProperty ProcessId)
+
+                          \$drivers = \$all | Where-Object {
+                            (\$_.Name -in @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')) -and (\$katalonPids -contains \$_.ParentProcessId)
+                          }
+                          \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
+
+                          \$browsers = \$all | Where-Object {
+                            (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and ( (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId) )
+                          }
+
+                          if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                          if (\$drivers)  { \$drivers  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                          if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                        """
+
+                        if (isInfra && attempt < maxAttempts) {
+                          echo "Infra-like failure detected, retrying suite ${s.name}"
+                          attempt++
+                          sleep(time: 10, unit: 'SECONDS')
+                          continue
+                        }
+
+                        throw err
+                      }
+                    }
+                  }
+                } catch (errFinal) {
                   failedSuites << s.name
                   echo "Suite FAILED: ${s.name}"
-                  echo "Error: ${err}"
+                  echo "Final error: ${errFinal}"
                   error("Failing stage but continuing pipeline")
+                } finally {
+
+                  // Post-clean: kill ONLY processes tied to this project and this suite path (extra safety)
+                  powershell """
+                    \$ErrorActionPreference = 'SilentlyContinue'
+                    \$proj  = '${projectPath}'
+                    \$suite = '${s.path}'
+                    \$all   = Get-CimInstance Win32_Process
+
+                    \$katalon = \$all | Where-Object {
+                      (\$_.Name -match 'katalon|katalonc|java') -and
+                      (\$_.CommandLine -like "*\$proj*") -and
+                      (\$_.CommandLine -like "*\$suite*")
+                    }
+                    \$katalonPids = @(\$katalon | Select-Object -ExpandProperty ProcessId)
+
+                    \$drivers = \$all | Where-Object {
+                      (\$_.Name -in @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')) -and (\$katalonPids -contains \$_.ParentProcessId)
+                    }
+                    \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
+
+                    \$browsers = \$all | Where-Object {
+                      (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and ( (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId) )
+                    }
+
+                    if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                    if (\$drivers)  { \$drivers  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                    if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                  """
+
+                  // Always release lock
+                  powershell """
+                    \$ErrorActionPreference = 'SilentlyContinue'
+                    try { if (Test-Path '${lockFile}') { Remove-Item -Force '${lockFile}' } } catch {}
+                  """
                 }
               }
             }
@@ -92,7 +256,7 @@ pipeline {
             currentBuild.result = 'UNSTABLE'
             echo "Suites failed (${failedSuites.size()}): ${failedSuites.join(', ')}"
           } else {
-            echo "All suites PASSED ✅"
+            echo "All suites PASSED
           }
         }
       }
@@ -103,1554 +267,18 @@ pipeline {
     always {
       echo "Pipeline completed"
       archiveArtifacts artifacts: 'Reports/**/*', allowEmptyArchive: true
+
+      // Extra safety: remove stale lock if it survived (never kills any process here)
+      powershell """
+        \$ErrorActionPreference = 'SilentlyContinue'
+        \$lockFile = "C:\\JenkinsLocks\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
+        try {
+          if (Test-Path \$lockFile) {
+            \$ageHours = ((Get-Date) - (Get-Item \$lockFile).LastWriteTime).TotalHours
+            if (\$ageHours -gt 1) { Remove-Item -Force \$lockFile }
+          }
+        } catch {}
+      """
     }
   }
 }
-
-
-
-
-12:02:21  [2025-12-18T13:02:21.453078800] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:21  [2025-12-18T13:02:21.454079600] Set credits.html as executable !
-12:02:21  [2025-12-18T13:02:21.454079600] Set LICENSE as executable !
-12:02:21  [2025-12-18T13:02:21.454079600] Set msedgedriver.exe as executable !
-12:02:21  [2025-12-18T13:02:21.454079600] Set MicrosoftWebDriver.exe as executable !
-12:02:21  [2025-12-18T13:02:21.454079600] Set geckodriver.exe as executable !
-12:02:21  [2025-12-18T13:02:21.454079600] Set IEDriverServer.exe as executable !
-12:02:21  [2025-12-18T13:02:21.455079200] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite" -reportFolder="Reports\NATIXIS_PURCHASE_CLOSE_ALL\124" -reportFileName="NATIXIS_PURCHASE_CLOSE_ALL" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-9080640467388905161
-12:02:23  [2025-12-18T13:02:23.761253100] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-ecca815d
-12:02:24  [2025-12-18T13:02:24.007275600] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:02:24  [2025-12-18T13:02:24.009272] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:02:24  [2025-12-18T13:02:24.383298100] 
-12:02:24  [2025-12-18T13:02:24.383298100] 
-12:02:24  [2025-12-18T13:02:24.387300] INFO: Katalon Version: 8.1.0
-12:02:24  [2025-12-18T13:02:24.394297600] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_PURCHASE_ORDER/POs_business_support_and_PR_preparer_can_close_all_suite -reportFolder=Reports\NATIXIS_PURCHASE_CLOSE_ALL\124 -reportFileName=NATIXIS_PURCHASE_CLOSE_ALL
-12:02:24  [2025-12-18T13:02:24.397299900] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-9080640467388905161
-12:02:24  [2025-12-18T13:02:24.399300700] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-ecca815d/.metadata/.log
-12:02:24  [2025-12-18T13:02:24.403298200] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:02:24  [2025-12-18T13:02:24.406299] INFO: Katalon Store server URL: https://store.katalon.com
-12:02:24  [2025-12-18T13:02:24.408301300] INFO: User home: C:\Users\adgi5appjenkins
-12:02:24  [2025-12-18T13:02:24.409300200] INFO: Java vendor: Azul Systems, Inc.
-12:02:24  [2025-12-18T13:02:24.411299500] INFO: Java version: 1.8.0_282
-12:02:24  [2025-12-18T13:02:24.413298900] INFO: Local OS: Windows Server 2016 64bit
-12:02:24  [2025-12-18T13:02:24.904334200] INFO: CPU load: 36%
-12:02:24  [2025-12-18T13:02:24.907332800] INFO: Total memory: 8191 MB
-12:02:24  [2025-12-18T13:02:24.910335100] INFO: Free memory: 2343 MB
-12:02:24  [2025-12-18T13:02:24.919334200] Start getting machine ID on Windows
-12:02:24  [2025-12-18T13:02:24.977337200] Start appending additional signatures
-12:02:24  [2025-12-18T13:02:24.983340600] hardwareSerialNumber 
-12:02:24  [2025-12-18T13:02:24.984339900] osDependentUsername adgi5appjenkins
-12:02:24  [2025-12-18T13:02:24.986340300] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:02:24  [2025-12-18T13:02:24.987340] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:02:24  [2025-12-18T13:02:24.989341100] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:02:24  [2025-12-18T13:02:24.996340600] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:02:24  [2025-12-18T13:02:24.998340300] 
-12:02:24  [2025-12-18T13:02:24.998340300] 
-12:02:25  [2025-12-18T13:02:25.013341900] Activating...
-12:02:25  [2025-12-18T13:02:25.020341800] Start activating offline...
-12:02:25  [2025-12-18T13:02:25.023341900] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:02:25  [2025-12-18T13:02:25.029344300] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:02:25  [2025-12-18T13:02:25.311362100] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:02:25  [2025-12-18T13:02:25.314363300] The number of valid offline licenses: 1
-[Pipeline] echo
-12:02:26  Suite PASSED: NATIXIS_PURCHASE_CLOSE_ALL
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite NATIXIS_PURCHASE_RECEIPT)
-12:02:25  [2025-12-18T13:02:25.713396400] The number of Runtime Engine running sessions: 2
-12:02:25  [2025-12-18T13:02:25.715396100] License quota exceeded
-12:02:25  [2025-12-18T13:02:25.715396100] 
-12:02:25  [2025-12-18T13:02:25.715396100] Offline activation failed.
-12:02:25  [2025-12-18T13:02:25.715396100] Start activating online...
-12:02:25  [2025-12-18T13:02:25.968420400] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:02:25  [2025-12-18T13:02:25.968420400] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:02:25  [2025-12-18T13:02:25.968420400] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:02:25  [2025-12-18T13:02:25.968420400] 
-12:02:25  [2025-12-18T13:02:25.970417100] All launchers terminated
-[Pipeline] echo
-12:02:26  Running suite: NATIXIS_PURCHASE_RECEIPT
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:02:27  
-12:02:27  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\NATIXIS_PURCHASE_RECEIPT\124" mkdir "Reports\NATIXIS_PURCHASE_RECEIPT\124" 
-[Pipeline] executeKatalon
-12:02:27  [2025-12-18T13:02:27.385925400] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:02:27  [2025-12-18T13:02:27.718930300] Making driver executables...
-12:02:27  [2025-12-18T13:02:27.718930300] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:02:27  [2025-12-18T13:02:27.719930700] Set chromedriver.exe as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set LICENSE.chromedriver as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set chromedriver.exe as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set LICENSE.chromedriver as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set credits.html as executable !
-12:02:27  [2025-12-18T13:02:27.719930700] Set LICENSE as executable !
-12:02:27  [2025-12-18T13:02:27.720931400] Set msedgedriver.exe as executable !
-12:02:27  [2025-12-18T13:02:27.720931400] Set MicrosoftWebDriver.exe as executable !
-12:02:27  [2025-12-18T13:02:27.720931400] Set geckodriver.exe as executable !
-12:02:27  [2025-12-18T13:02:27.720931400] Set IEDriverServer.exe as executable !
-12:02:27  [2025-12-18T13:02:27.721932900] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite" -reportFolder="Reports\NATIXIS_PURCHASE_RECEIPT\124" -reportFileName="NATIXIS_PURCHASE_RECEIPT" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-7009800735351984856
-12:02:28  [2025-12-18T13:02:28.185969200] 2025-12-18 13:02:28.179 WARN  k.k.c.w.k.b.WaitForElementVisibleKeyword - Object 'Object Repository/purchase_request/buttonLaunchPRworkflow' is not visible after 20 second(s)
-12:02:30  [2025-12-18T13:02:30.397150500] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-0503a5c1
-12:02:30  [2025-12-18T13:02:30.658155200] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:02:30  [2025-12-18T13:02:30.660155300] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:02:31  [2025-12-18T13:02:31.133187400] 
-12:02:31  [2025-12-18T13:02:31.133187400] 
-12:02:31  [2025-12-18T13:02:31.137193] INFO: Katalon Version: 8.1.0
-12:02:31  [2025-12-18T13:02:31.146190800] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_PURCHASE_ORDER/POs_receipt_suite -reportFolder=Reports\NATIXIS_PURCHASE_RECEIPT\124 -reportFileName=NATIXIS_PURCHASE_RECEIPT
-12:02:31  [2025-12-18T13:02:31.149192700] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-7009800735351984856
-12:02:31  [2025-12-18T13:02:31.152191] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-0503a5c1/.metadata/.log
-12:02:31  [2025-12-18T13:02:31.155192900] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:02:31  [2025-12-18T13:02:31.159193700] INFO: Katalon Store server URL: https://store.katalon.com
-12:02:31  [2025-12-18T13:02:31.162191600] INFO: User home: C:\Users\adgi5appjenkins
-12:02:31  [2025-12-18T13:02:31.164194600] INFO: Java vendor: Azul Systems, Inc.
-12:02:31  [2025-12-18T13:02:31.167191800] INFO: Java version: 1.8.0_282
-12:02:31  [2025-12-18T13:02:31.170192300] INFO: Local OS: Windows Server 2016 64bit
-12:02:31  [2025-12-18T13:02:31.733238700] INFO: CPU load: 58%
-12:02:31  [2025-12-18T13:02:31.736234700] INFO: Total memory: 8191 MB
-12:02:31  [2025-12-18T13:02:31.739233400] INFO: Free memory: 2315 MB
-12:02:31  [2025-12-18T13:02:31.747235100] Start getting machine ID on Windows
-12:02:31  [2025-12-18T13:02:31.809242600] Start appending additional signatures
-12:02:31  [2025-12-18T13:02:31.817239900] hardwareSerialNumber 
-12:02:31  [2025-12-18T13:02:31.819242200] osDependentUsername adgi5appjenkins
-12:02:31  [2025-12-18T13:02:31.821241900] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:02:31  [2025-12-18T13:02:31.823240500] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:02:31  [2025-12-18T13:02:31.824241200] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:02:31  [2025-12-18T13:02:31.837243100] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:02:31  [2025-12-18T13:02:31.839243900] 
-12:02:31  [2025-12-18T13:02:31.839243900] 
-12:02:31  [2025-12-18T13:02:31.858243400] Activating...
-12:02:31  [2025-12-18T13:02:31.864244] Start activating offline...
-12:02:31  [2025-12-18T13:02:31.867244800] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:02:31  [2025-12-18T13:02:31.875246500] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:02:32  [2025-12-18T13:02:32.206270800] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:02:32  [2025-12-18T13:02:32.208270900] The number of valid offline licenses: 1
-12:02:32  [2025-12-18T13:02:32.488289800] The number of Runtime Engine running sessions: 2
-12:02:32  [2025-12-18T13:02:32.491288400] License quota exceeded
-12:02:32  [2025-12-18T13:02:32.491288400] 
-12:02:32  [2025-12-18T13:02:32.491288400] Offline activation failed.
-12:02:32  [2025-12-18T13:02:32.491288400] Start activating online...
-12:02:32  [2025-12-18T13:02:32.765308300] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:02:32  [2025-12-18T13:02:32.765308300] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:02:32  [2025-12-18T13:02:32.765308300] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:02:32  [2025-12-18T13:02:32.765308300] 
-12:02:32  [2025-12-18T13:02:32.767309] All launchers terminated
-[Pipeline] echo
-12:02:33  Suite PASSED: NATIXIS_PURCHASE_RECEIPT
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite NATIXIS_PURCHASE_PERIMETER)
-[Pipeline] echo
-12:02:33  Running suite: NATIXIS_PURCHASE_PERIMETER
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:02:34  
-12:02:34  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\NATIXIS_PURCHASE_PERIMETER\124" mkdir "Reports\NATIXIS_PURCHASE_PERIMETER\124" 
-[Pipeline] executeKatalon
-12:02:34  [2025-12-18T13:02:34.255431100] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:02:34  [2025-12-18T13:02:34.557444900] Making driver executables...
-12:02:34  [2025-12-18T13:02:34.558444500] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:02:34  [2025-12-18T13:02:34.558444500] Set chromedriver.exe as executable !
-12:02:34  [2025-12-18T13:02:34.558444500] Set LICENSE.chromedriver as executable !
-12:02:34  [2025-12-18T13:02:34.558444500] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:34  [2025-12-18T13:02:34.558444500] Set chromedriver.exe as executable !
-12:02:34  [2025-12-18T13:02:34.558444500] Set LICENSE.chromedriver as executable !
-12:02:34  [2025-12-18T13:02:34.558444500] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:34  [2025-12-18T13:02:34.559445300] Set credits.html as executable !
-12:02:34  [2025-12-18T13:02:34.559445300] Set LICENSE as executable !
-12:02:34  [2025-12-18T13:02:34.559445300] Set msedgedriver.exe as executable !
-12:02:34  [2025-12-18T13:02:34.559445300] Set MicrosoftWebDriver.exe as executable !
-12:02:34  [2025-12-18T13:02:34.559445300] Set geckodriver.exe as executable !
-12:02:34  [2025-12-18T13:02:34.559445300] Set IEDriverServer.exe as executable !
-12:02:34  [2025-12-18T13:02:34.561445400] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite" -reportFolder="Reports\NATIXIS_PURCHASE_PERIMETER\124" -reportFileName="NATIXIS_PURCHASE_PERIMETER" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-4454633097521665465
-12:02:36  [2025-12-18T13:02:36.899617900] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-baff6eb8
-12:02:37  [2025-12-18T13:02:37.136634900] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:02:37  [2025-12-18T13:02:37.137634900] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:02:29  [2025-12-18T13:02:29.996102300] 
-12:02:29  [2025-12-18T13:02:29.996102300] --------------------------------------------------------------------------------
-12:02:29  [2025-12-18T13:02:29.996102300] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:02:29  [2025-12-18T13:02:29.996102300]  - 20251218_124829.....................................................3/19(16%)
-12:02:29  [2025-12-18T13:02:29.996102300] --------------------------------------------------------------------------------
-12:02:29  [2025-12-18T13:02:29.996102300] 
-12:02:37  [2025-12-18T13:02:37.512661400] 
-12:02:37  [2025-12-18T13:02:37.512661400] 
-12:02:37  [2025-12-18T13:02:37.515661100] INFO: Katalon Version: 8.1.0
-12:02:37  [2025-12-18T13:02:37.522662] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_PURCHASE_ORDER/POs_users_have_access_of_PO_of_own_perimeter_suite -reportFolder=Reports\NATIXIS_PURCHASE_PERIMETER\124 -reportFileName=NATIXIS_PURCHASE_PERIMETER
-12:02:37  [2025-12-18T13:02:37.525663500] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-4454633097521665465
-12:02:37  [2025-12-18T13:02:37.527665800] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-baff6eb8/.metadata/.log
-12:02:37  [2025-12-18T13:02:37.529663600] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:02:37  [2025-12-18T13:02:37.532663700] INFO: Katalon Store server URL: https://store.katalon.com
-12:02:37  [2025-12-18T13:02:37.534664100] INFO: User home: C:\Users\adgi5appjenkins
-12:02:37  [2025-12-18T13:02:37.535664900] INFO: Java vendor: Azul Systems, Inc.
-12:02:37  [2025-12-18T13:02:37.537665] INFO: Java version: 1.8.0_282
-12:02:37  [2025-12-18T13:02:37.538663100] INFO: Local OS: Windows Server 2016 64bit
-12:02:38  [2025-12-18T13:02:38.054701700] INFO: CPU load: 29%
-12:02:38  [2025-12-18T13:02:38.056700300] INFO: Total memory: 8191 MB
-12:02:38  [2025-12-18T13:02:38.059700800] INFO: Free memory: 2309 MB
-12:02:38  [2025-12-18T13:02:38.067705800] Start getting machine ID on Windows
-12:02:38  [2025-12-18T13:02:38.142708600] Start appending additional signatures
-12:02:38  [2025-12-18T13:02:38.149709600] hardwareSerialNumber 
-12:02:38  [2025-12-18T13:02:38.152708200] osDependentUsername adgi5appjenkins
-12:02:38  [2025-12-18T13:02:38.154709] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:02:38  [2025-12-18T13:02:38.156713100] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:02:38  [2025-12-18T13:02:38.157710200] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:02:38  [2025-12-18T13:02:38.165711200] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:02:38  [2025-12-18T13:02:38.167710100] 
-12:02:38  [2025-12-18T13:02:38.167710100] 
-12:02:38  [2025-12-18T13:02:38.187713400] Activating...
-12:02:38  [2025-12-18T13:02:38.193715] Start activating offline...
-12:02:38  [2025-12-18T13:02:38.195714] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:02:38  [2025-12-18T13:02:38.203711700] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:02:38  [2025-12-18T13:02:38.518736900] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:02:38  [2025-12-18T13:02:38.521737] The number of valid offline licenses: 1
-[Pipeline] echo
-12:02:39  Suite PASSED: NATIXIS_PURCHASE_PERIMETER
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite NATIXIS_PR)
-12:02:38  [2025-12-18T13:02:38.866764200] The number of Runtime Engine running sessions: 2
-12:02:38  [2025-12-18T13:02:38.869765100] License quota exceeded
-12:02:38  [2025-12-18T13:02:38.869765100] 
-12:02:38  [2025-12-18T13:02:38.869765100] Offline activation failed.
-12:02:38  [2025-12-18T13:02:38.869765100] Start activating online...
-12:02:39  [2025-12-18T13:02:39.144783800] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:02:39  [2025-12-18T13:02:39.144783800] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:02:39  [2025-12-18T13:02:39.144783800] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:02:39  [2025-12-18T13:02:39.144783800] 
-12:02:39  [2025-12-18T13:02:39.145785] All launchers terminated
-[Pipeline] echo
-12:02:39  Running suite: NATIXIS_PR
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:02:40  
-12:02:40  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\NATIXIS_PR\124" mkdir "Reports\NATIXIS_PR\124" 
-[Pipeline] executeKatalon
-12:02:40  [2025-12-18T13:02:40.510887900] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:02:40  [2025-12-18T13:02:40.791906100] Making driver executables...
-12:02:40  [2025-12-18T13:02:40.791906100] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:02:40  [2025-12-18T13:02:40.792906500] Set chromedriver.exe as executable !
-12:02:40  [2025-12-18T13:02:40.792906500] Set LICENSE.chromedriver as executable !
-12:02:40  [2025-12-18T13:02:40.792906500] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:40  [2025-12-18T13:02:40.792906500] Set chromedriver.exe as executable !
-12:02:40  [2025-12-18T13:02:40.792906500] Set LICENSE.chromedriver as executable !
-12:02:40  [2025-12-18T13:02:40.792906500] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:40  [2025-12-18T13:02:40.793906900] Set credits.html as executable !
-12:02:40  [2025-12-18T13:02:40.793906900] Set LICENSE as executable !
-12:02:40  [2025-12-18T13:02:40.793906900] Set msedgedriver.exe as executable !
-12:02:40  [2025-12-18T13:02:40.793906900] Set MicrosoftWebDriver.exe as executable !
-12:02:40  [2025-12-18T13:02:40.793906900] Set geckodriver.exe as executable !
-12:02:40  [2025-12-18T13:02:40.793906900] Set IEDriverServer.exe as executable !
-12:02:40  [2025-12-18T13:02:40.794906200] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite" -reportFolder="Reports\NATIXIS_PR\124" -reportFileName="NATIXIS_PR" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-1414689698789755665
-12:02:43  [2025-12-18T13:02:43.156086600] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-c215dac6
-12:02:43  [2025-12-18T13:02:43.379102600] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:02:43  [2025-12-18T13:02:43.381101600] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:02:43  [2025-12-18T13:02:43.735126800] 
-12:02:43  [2025-12-18T13:02:43.735126800] 
-12:02:43  [2025-12-18T13:02:43.737130900] INFO: Katalon Version: 8.1.0
-12:02:43  [2025-12-18T13:02:43.745128500] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_suite -reportFolder=Reports\NATIXIS_PR\124 -reportFileName=NATIXIS_PR
-12:02:43  [2025-12-18T13:02:43.747128500] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-1414689698789755665
-12:02:43  [2025-12-18T13:02:43.751128600] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-c215dac6/.metadata/.log
-12:02:43  [2025-12-18T13:02:43.754128400] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:02:43  [2025-12-18T13:02:43.756128] INFO: Katalon Store server URL: https://store.katalon.com
-12:02:43  [2025-12-18T13:02:43.760129600] INFO: User home: C:\Users\adgi5appjenkins
-12:02:43  [2025-12-18T13:02:43.761131100] INFO: Java vendor: Azul Systems, Inc.
-12:02:43  [2025-12-18T13:02:43.763127900] INFO: Java version: 1.8.0_282
-12:02:43  [2025-12-18T13:02:43.765128600] INFO: Local OS: Windows Server 2016 64bit
-12:02:44  [2025-12-18T13:02:44.233164200] INFO: CPU load: 34%
-12:02:44  [2025-12-18T13:02:44.237162500] INFO: Total memory: 8191 MB
-12:02:44  [2025-12-18T13:02:44.239165500] INFO: Free memory: 2320 MB
-12:02:44  [2025-12-18T13:02:44.248165100] Start getting machine ID on Windows
-12:02:44  [2025-12-18T13:02:44.308171100] Start appending additional signatures
-12:02:44  [2025-12-18T13:02:44.314169400] hardwareSerialNumber 
-12:02:44  [2025-12-18T13:02:44.316177200] osDependentUsername adgi5appjenkins
-12:02:44  [2025-12-18T13:02:44.318169200] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:02:44  [2025-12-18T13:02:44.319171400] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:02:44  [2025-12-18T13:02:44.321171500] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:02:44  [2025-12-18T13:02:44.329172800] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:02:44  [2025-12-18T13:02:44.330172100] 
-12:02:44  [2025-12-18T13:02:44.330172100] 
-12:02:44  [2025-12-18T13:02:44.348173800] Activating...
-12:02:44  [2025-12-18T13:02:44.355176600] Start activating offline...
-12:02:44  [2025-12-18T13:02:44.358176700] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:02:44  [2025-12-18T13:02:44.367178100] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:02:44  [2025-12-18T13:02:44.727205100] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:02:44  [2025-12-18T13:02:44.729203] The number of valid offline licenses: 1
-[Pipeline] echo
-12:02:45  Suite PASSED: NATIXIS_PR
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite NATIXIS_PR_2PHASE)
-12:02:45  [2025-12-18T13:02:45.052225500] The number of Runtime Engine running sessions: 2
-12:02:45  [2025-12-18T13:02:45.054228800] License quota exceeded
-12:02:45  [2025-12-18T13:02:45.054228800] 
-12:02:45  [2025-12-18T13:02:45.054228800] Offline activation failed.
-12:02:45  [2025-12-18T13:02:45.054228800] Start activating online...
-12:02:45  [2025-12-18T13:02:45.306247200] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:02:45  [2025-12-18T13:02:45.306247200] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:02:45  [2025-12-18T13:02:45.306247200] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:02:45  [2025-12-18T13:02:45.306247200] 
-12:02:45  [2025-12-18T13:02:45.308249100] All launchers terminated
-[Pipeline] echo
-12:02:46  Running suite: NATIXIS_PR_2PHASE
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:02:46  
-12:02:46  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\NATIXIS_PR_2PHASE\124" mkdir "Reports\NATIXIS_PR_2PHASE\124" 
-[Pipeline] executeKatalon
-12:02:46  [2025-12-18T13:02:46.793363200] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:02:47  [2025-12-18T13:02:47.099378800] Making driver executables...
-12:02:47  [2025-12-18T13:02:47.099378800] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:02:47  [2025-12-18T13:02:47.100378100] Set chromedriver.exe as executable !
-12:02:47  [2025-12-18T13:02:47.100378100] Set LICENSE.chromedriver as executable !
-12:02:47  [2025-12-18T13:02:47.100378100] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:47  [2025-12-18T13:02:47.100378100] Set chromedriver.exe as executable !
-12:02:47  [2025-12-18T13:02:47.100378100] Set LICENSE.chromedriver as executable !
-12:02:47  [2025-12-18T13:02:47.100378100] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:47  [2025-12-18T13:02:47.100378100] Set credits.html as executable !
-12:02:47  [2025-12-18T13:02:47.101381] Set LICENSE as executable !
-12:02:47  [2025-12-18T13:02:47.101381] Set msedgedriver.exe as executable !
-12:02:47  [2025-12-18T13:02:47.101381] Set MicrosoftWebDriver.exe as executable !
-12:02:47  [2025-12-18T13:02:47.101381] Set geckodriver.exe as executable !
-12:02:47  [2025-12-18T13:02:47.101381] Set IEDriverServer.exe as executable !
-12:02:47  [2025-12-18T13:02:47.102382200] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite" -reportFolder="Reports\NATIXIS_PR_2PHASE\124" -reportFileName="NATIXIS_PR_2PHASE" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-5423504976737613564
-12:02:44  [2025-12-18T13:02:44.997221900] 
-12:02:44  [2025-12-18T13:02:44.997221900] --------------------------------------------------------------------------------
-12:02:44  [2025-12-18T13:02:44.997221900] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:02:44  [2025-12-18T13:02:44.997221900]  - 20251218_124829.....................................................3/19(16%)
-12:02:44  [2025-12-18T13:02:44.997221900] --------------------------------------------------------------------------------
-12:02:44  [2025-12-18T13:02:44.997221900] 
-12:02:49  [2025-12-18T13:02:49.512556700] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-cf050b62
-12:02:49  [2025-12-18T13:02:49.775595600] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:02:49  [2025-12-18T13:02:49.777579500] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:02:50  [2025-12-18T13:02:50.177610800] 
-12:02:50  [2025-12-18T13:02:50.177610800] 
-12:02:50  [2025-12-18T13:02:50.181609100] INFO: Katalon Version: 8.1.0
-12:02:50  [2025-12-18T13:02:50.187612500] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_PURCHASE_REQUEST/PRs_2nd_phase_suite -reportFolder=Reports\NATIXIS_PR_2PHASE\124 -reportFileName=NATIXIS_PR_2PHASE
-12:02:50  [2025-12-18T13:02:50.189615500] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-5423504976737613564
-12:02:50  [2025-12-18T13:02:50.191610800] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-cf050b62/.metadata/.log
-12:02:50  [2025-12-18T13:02:50.193610200] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:02:50  [2025-12-18T13:02:50.197609600] INFO: Katalon Store server URL: https://store.katalon.com
-12:02:50  [2025-12-18T13:02:50.198610700] INFO: User home: C:\Users\adgi5appjenkins
-12:02:50  [2025-12-18T13:02:50.200610400] INFO: Java vendor: Azul Systems, Inc.
-12:02:50  [2025-12-18T13:02:50.203612] INFO: Java version: 1.8.0_282
-12:02:50  [2025-12-18T13:02:50.204611600] INFO: Local OS: Windows Server 2016 64bit
-12:02:50  [2025-12-18T13:02:50.720650600] INFO: CPU load: 31%
-12:02:50  [2025-12-18T13:02:50.723655100] INFO: Total memory: 8191 MB
-12:02:50  [2025-12-18T13:02:50.726655200] INFO: Free memory: 2303 MB
-12:02:50  [2025-12-18T13:02:50.735652200] Start getting machine ID on Windows
-12:02:50  [2025-12-18T13:02:50.795657500] Start appending additional signatures
-12:02:50  [2025-12-18T13:02:50.802656600] hardwareSerialNumber 
-12:02:50  [2025-12-18T13:02:50.804657] osDependentUsername adgi5appjenkins
-12:02:50  [2025-12-18T13:02:50.805657] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:02:50  [2025-12-18T13:02:50.807658900] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:02:50  [2025-12-18T13:02:50.809657900] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:02:50  [2025-12-18T13:02:50.822659800] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:02:50  [2025-12-18T13:02:50.824659500] 
-12:02:50  [2025-12-18T13:02:50.824659500] 
-12:02:50  [2025-12-18T13:02:50.843660800] Activating...
-12:02:50  [2025-12-18T13:02:50.849659600] Start activating offline...
-12:02:50  [2025-12-18T13:02:50.852662600] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:02:50  [2025-12-18T13:02:50.860670500] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-[Pipeline] echo
-12:02:52  Suite PASSED: NATIXIS_PR_2PHASE
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-12:02:51  [2025-12-18T13:02:51.256689300] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:02:51  [2025-12-18T13:02:51.260690800] The number of valid offline licenses: 1
-12:02:51  [2025-12-18T13:02:51.585714900] The number of Runtime Engine running sessions: 2
-12:02:51  [2025-12-18T13:02:51.587717200] License quota exceeded
-12:02:51  [2025-12-18T13:02:51.587717200] 
-12:02:51  [2025-12-18T13:02:51.587717200] Offline activation failed.
-12:02:51  [2025-12-18T13:02:51.587717200] Start activating online...
-12:02:51  [2025-12-18T13:02:51.884733200] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:02:51  [2025-12-18T13:02:51.884733200] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:02:51  [2025-12-18T13:02:51.884733200] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:02:51  [2025-12-18T13:02:51.884733200] 
-12:02:51  [2025-12-18T13:02:51.885733600] All launchers terminated
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite NATIXIS_RECEPTION_REC)
-[Pipeline] echo
-12:02:52  Running suite: NATIXIS_RECEPTION_REC
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:02:53  
-12:02:53  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\NATIXIS_RECEPTION_REC\124" mkdir "Reports\NATIXIS_RECEPTION_REC\124" 
-[Pipeline] executeKatalon
-12:02:53  [2025-12-18T13:02:53.268387500] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:02:53  [2025-12-18T13:02:53.615402] Making driver executables...
-12:02:53  [2025-12-18T13:02:53.615402] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:02:53  [2025-12-18T13:02:53.615402] Set chromedriver.exe as executable !
-12:02:53  [2025-12-18T13:02:53.615402] Set LICENSE.chromedriver as executable !
-12:02:53  [2025-12-18T13:02:53.615402] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:53  [2025-12-18T13:02:53.615402] Set chromedriver.exe as executable !
-12:02:53  [2025-12-18T13:02:53.615402] Set LICENSE.chromedriver as executable !
-12:02:53  [2025-12-18T13:02:53.615402] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:02:53  [2025-12-18T13:02:53.616403100] Set credits.html as executable !
-12:02:53  [2025-12-18T13:02:53.616403100] Set LICENSE as executable !
-12:02:53  [2025-12-18T13:02:53.616403100] Set msedgedriver.exe as executable !
-12:02:53  [2025-12-18T13:02:53.616403100] Set MicrosoftWebDriver.exe as executable !
-12:02:53  [2025-12-18T13:02:53.616403100] Set geckodriver.exe as executable !
-12:02:53  [2025-12-18T13:02:53.616403100] Set IEDriverServer.exe as executable !
-12:02:53  [2025-12-18T13:02:53.618399900] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite" -reportFolder="Reports\NATIXIS_RECEPTION_REC\124" -reportFileName="NATIXIS_RECEPTION_REC" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-5362317707582582197
-12:02:56  [2025-12-18T13:02:56.143586300] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-3e3f7770
-12:02:56  [2025-12-18T13:02:56.379605600] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:02:56  [2025-12-18T13:02:56.380605600] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:02:56  [2025-12-18T13:02:56.756630600] 
-12:02:56  [2025-12-18T13:02:56.756630600] 
-12:02:56  [2025-12-18T13:02:56.760631500] INFO: Katalon Version: 8.1.0
-12:02:56  [2025-12-18T13:02:56.767631600] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_RECEPTION/receipt_rec_collection_suite -reportFolder=Reports\NATIXIS_RECEPTION_REC\124 -reportFileName=NATIXIS_RECEPTION_REC
-12:02:56  [2025-12-18T13:02:56.769632100] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-5362317707582582197
-12:02:56  [2025-12-18T13:02:56.771631400] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-3e3f7770/.metadata/.log
-12:02:56  [2025-12-18T13:02:56.773629600] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:02:56  [2025-12-18T13:02:56.775635100] INFO: Katalon Store server URL: https://store.katalon.com
-12:02:56  [2025-12-18T13:02:56.778631900] INFO: User home: C:\Users\adgi5appjenkins
-12:02:56  [2025-12-18T13:02:56.780632300] INFO: Java vendor: Azul Systems, Inc.
-12:02:56  [2025-12-18T13:02:56.781632700] INFO: Java version: 1.8.0_282
-12:02:56  [2025-12-18T13:02:56.783633500] INFO: Local OS: Windows Server 2016 64bit
-12:02:57  [2025-12-18T13:02:57.366677300] INFO: CPU load: 52%
-12:02:57  [2025-12-18T13:02:57.370679700] INFO: Total memory: 8191 MB
-12:02:57  [2025-12-18T13:02:57.374679800] INFO: Free memory: 2315 MB
-12:02:57  [2025-12-18T13:02:57.386679100] Start getting machine ID on Windows
-12:02:57  [2025-12-18T13:02:57.464684500] Start appending additional signatures
-12:02:57  [2025-12-18T13:02:57.471685100] hardwareSerialNumber 
-12:02:57  [2025-12-18T13:02:57.474688200] osDependentUsername adgi5appjenkins
-12:02:57  [2025-12-18T13:02:57.477687900] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:02:57  [2025-12-18T13:02:57.487688600] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:02:57  [2025-12-18T13:02:57.490689] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:02:57  [2025-12-18T13:02:57.510690800] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:02:57  [2025-12-18T13:02:57.514692] 
-12:02:57  [2025-12-18T13:02:57.514692] 
-12:02:57  [2025-12-18T13:02:57.542691400] Activating...
-12:02:57  [2025-12-18T13:02:57.551692500] Start activating offline...
-12:02:57  [2025-12-18T13:02:57.554692600] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:02:57  [2025-12-18T13:02:57.565695100] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:02:49  [2025-12-18T13:02:49.189534200] 2025-12-18 13:02:49.189 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] Failed to find element with id 'Object Repository/purchase_request/buttonLaunchPRworkflow'. Try using Self-healing.
-12:02:49  [2025-12-18T13:02:49.192532100] 2025-12-18 13:02:49.188 INFO  c.k.k.c.webui.common.WebUiCommonHelper   - Unable to find the element located by 'By.xpath: //table[@id='proxyActionBar_x_plhWorkflow']/tbody/tr/td/button'. Please recheck the objects properties to make sure the desired element is located. 
-12:02:49  [2025-12-18T13:02:49.313541800] 2025-12-18 13:02:49.311 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] The current locator of test object 'Object Repository/purchase_request/buttonLaunchPRworkflow' was broken. Propose an alternative one: '(.//*[normalize-space(text()) and normalize-space(.)='Save'])[2]/following::button[1]'.
-12:02:57  [2025-12-18T13:02:57.977725600] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:02:57  [2025-12-18T13:02:57.980726500] The number of valid offline licenses: 1
-12:02:58  [2025-12-18T13:02:58.320752500] The number of Runtime Engine running sessions: 2
-12:02:58  [2025-12-18T13:02:58.323750] License quota exceeded
-12:02:58  [2025-12-18T13:02:58.323750] 
-12:02:58  [2025-12-18T13:02:58.323750] Offline activation failed.
-12:02:58  [2025-12-18T13:02:58.323750] Start activating online...
-12:02:58  [2025-12-18T13:02:58.650774500] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:02:58  [2025-12-18T13:02:58.650774500] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:02:58  [2025-12-18T13:02:58.650774500] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:02:58  [2025-12-18T13:02:58.650774500] 
-12:02:58  [2025-12-18T13:02:58.652776700] All launchers terminated
-[Pipeline] echo
-12:02:58  Suite PASSED: NATIXIS_RECEPTION_REC
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite NATIXIS_RECEPTION_ETL)
-[Pipeline] echo
-12:02:59  Running suite: NATIXIS_RECEPTION_ETL
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:02:59  
-12:02:59  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\NATIXIS_RECEPTION_ETL\124" mkdir "Reports\NATIXIS_RECEPTION_ETL\124" 
-[Pipeline] executeKatalon
-12:03:00  [2025-12-18T13:03:00.111530500] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:00  [2025-12-18T13:03:00.489512300] Making driver executables...
-12:03:00  [2025-12-18T13:03:00.489512300] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:00  [2025-12-18T13:03:00.489512300] Set chromedriver.exe as executable !
-12:03:00  [2025-12-18T13:03:00.490487400] Set LICENSE.chromedriver as executable !
-12:03:00  [2025-12-18T13:03:00.490487400] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:00  [2025-12-18T13:03:00.490487400] Set chromedriver.exe as executable !
-12:03:00  [2025-12-18T13:03:00.490487400] Set LICENSE.chromedriver as executable !
-12:03:00  [2025-12-18T13:03:00.490487400] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:00  [2025-12-18T13:03:00.491489700] Set credits.html as executable !
-12:03:00  [2025-12-18T13:03:00.491489700] Set LICENSE as executable !
-12:03:00  [2025-12-18T13:03:00.491489700] Set msedgedriver.exe as executable !
-12:03:00  [2025-12-18T13:03:00.491489700] Set MicrosoftWebDriver.exe as executable !
-12:03:00  [2025-12-18T13:03:00.492489700] Set geckodriver.exe as executable !
-12:03:00  [2025-12-18T13:03:00.492489700] Set IEDriverServer.exe as executable !
-12:03:00  [2025-12-18T13:03:00.493491200] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/NATIXIS_RECEPTION/reception_etl_suite" -reportFolder="Reports\NATIXIS_RECEPTION_ETL\124" -reportFileName="NATIXIS_RECEPTION_ETL" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-2428856530407234386
-12:03:03  [2025-12-18T13:03:03.185690600] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-efe48d03
-12:03:03  [2025-12-18T13:03:03.475720800] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:03  [2025-12-18T13:03:03.478714700] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:03  [2025-12-18T13:03:03.854742600] 
-12:03:03  [2025-12-18T13:03:03.854742600] 
-12:03:03  [2025-12-18T13:03:03.856741200] INFO: Katalon Version: 8.1.0
-12:03:03  [2025-12-18T13:03:03.863741400] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/NATIXIS_RECEPTION/reception_etl_suite -reportFolder=Reports\NATIXIS_RECEPTION_ETL\124 -reportFileName=NATIXIS_RECEPTION_ETL
-12:03:03  [2025-12-18T13:03:03.866741500] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-2428856530407234386
-12:03:03  [2025-12-18T13:03:03.869744900] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-efe48d03/.metadata/.log
-12:03:03  [2025-12-18T13:03:03.871744200] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:03  [2025-12-18T13:03:03.876741100] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:03  [2025-12-18T13:03:03.879744500] INFO: User home: C:\Users\adgi5appjenkins
-12:03:03  [2025-12-18T13:03:03.881742] INFO: Java vendor: Azul Systems, Inc.
-12:03:03  [2025-12-18T13:03:03.883741300] INFO: Java version: 1.8.0_282
-12:03:03  [2025-12-18T13:03:03.886745400] INFO: Local OS: Windows Server 2016 64bit
-12:03:04  [2025-12-18T13:03:04.425784500] INFO: CPU load: 34%
-12:03:04  [2025-12-18T13:03:04.429783800] INFO: Total memory: 8191 MB
-12:03:04  [2025-12-18T13:03:04.432785800] INFO: Free memory: 2308 MB
-12:03:04  [2025-12-18T13:03:04.440785300] Start getting machine ID on Windows
-12:03:04  [2025-12-18T13:03:04.510792700] Start appending additional signatures
-12:03:04  [2025-12-18T13:03:04.517792200] hardwareSerialNumber 
-12:03:04  [2025-12-18T13:03:04.520793] osDependentUsername adgi5appjenkins
-12:03:04  [2025-12-18T13:03:04.522792300] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:04  [2025-12-18T13:03:04.524792800] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:04  [2025-12-18T13:03:04.526791700] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:04  [2025-12-18T13:03:04.539795500] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:04  [2025-12-18T13:03:04.541794100] 
-12:03:04  [2025-12-18T13:03:04.541794100] 
-12:03:04  [2025-12-18T13:03:04.561793200] Activating...
-12:03:04  [2025-12-18T13:03:04.567796] Start activating offline...
-12:03:04  [2025-12-18T13:03:04.570795] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:04  [2025-12-18T13:03:04.578796] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:04  [2025-12-18T13:03:04.884820900] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:04  [2025-12-18T13:03:04.886822800] The number of valid offline licenses: 1
-12:03:05  [2025-12-18T13:03:05.170841400] The number of Runtime Engine running sessions: 2
-12:03:05  [2025-12-18T13:03:05.172843300] License quota exceeded
-12:03:05  [2025-12-18T13:03:05.172843300] 
-12:03:05  [2025-12-18T13:03:05.172843300] Offline activation failed.
-12:03:05  [2025-12-18T13:03:05.172843300] Start activating online...
-12:03:05  [2025-12-18T13:03:05.478864700] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:05  [2025-12-18T13:03:05.478864700] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:05  [2025-12-18T13:03:05.478864700] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:05  [2025-12-18T13:03:05.478864700] 
-12:03:05  [2025-12-18T13:03:05.479863300] All launchers terminated
-[Pipeline] echo
-12:03:05  Suite PASSED: NATIXIS_RECEPTION_ETL
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite TS_COLLECTION_OTHERS)
-[Pipeline] echo
-12:03:06  Running suite: TS_COLLECTION_OTHERS
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:06  
-12:03:06  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\TS_COLLECTION_OTHERS\124" mkdir "Reports\TS_COLLECTION_OTHERS\124" 
-[Pipeline] executeKatalon
-12:03:06  [2025-12-18T13:03:06.895869600] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:07  [2025-12-18T13:03:07.188880700] Making driver executables...
-12:03:07  [2025-12-18T13:03:07.188880700] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:07  [2025-12-18T13:03:07.188880700] Set chromedriver.exe as executable !
-12:03:07  [2025-12-18T13:03:07.188880700] Set LICENSE.chromedriver as executable !
-12:03:07  [2025-12-18T13:03:07.188880700] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:07  [2025-12-18T13:03:07.188880700] Set chromedriver.exe as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set LICENSE.chromedriver as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set credits.html as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set LICENSE as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set msedgedriver.exe as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set MicrosoftWebDriver.exe as executable !
-12:03:07  [2025-12-18T13:03:07.189880800] Set geckodriver.exe as executable !
-12:03:07  [2025-12-18T13:03:07.190881900] Set IEDriverServer.exe as executable !
-12:03:07  [2025-12-18T13:03:07.190881900] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/TEST_SUITE_COLLECTIONS/without_group" -reportFolder="Reports\TS_COLLECTION_OTHERS\124" -reportFileName="TS_COLLECTION_OTHERS" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-4519943311482833501
-12:03:08  Body did not finish within grace period; terminating with extreme prejudice
-[Pipeline] echo
-12:03:08  Suite FAILED: TS_COLLECTION_OTHERS
-[Pipeline] echo
-12:03:08  Error: org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
-[Pipeline] error
-[Pipeline] }
-12:02:59  [2025-12-18T13:02:59.997865600] 
-12:02:59  [2025-12-18T13:02:59.997865600] --------------------------------------------------------------------------------
-12:02:59  [2025-12-18T13:02:59.997865600] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:02:59  [2025-12-18T13:02:59.997865600]  - 20251218_124829.....................................................3/19(16%)
-12:02:59  [2025-12-18T13:02:59.997865600] --------------------------------------------------------------------------------
-12:02:59  [2025-12-18T13:02:59.997865600] 
-12:03:08  ERROR: Failing stage but continuing pipeline
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite BPCE_SI_DAHAT1)
-[Pipeline] echo
-12:03:08  Running suite: BPCE_SI_DAHAT1
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:09  
-12:03:09  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\BPCE_SI_DAHAT1\124" mkdir "Reports\BPCE_SI_DAHAT1\124" 
-[Pipeline] executeKatalon
-12:03:09  [2025-12-18T13:03:09.753097100] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-bbea5234
-12:03:10  [2025-12-18T13:03:10.017095200] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:10  [2025-12-18T13:03:10.019097100] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:09  [2025-12-18T13:03:09.568059600] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:09  [2025-12-18T13:03:09.957089300] Making driver executables...
-12:03:09  [2025-12-18T13:03:09.957089300] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:09  [2025-12-18T13:03:09.958090100] Set chromedriver.exe as executable !
-12:03:09  [2025-12-18T13:03:09.958090100] Set LICENSE.chromedriver as executable !
-12:03:09  [2025-12-18T13:03:09.958090100] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:09  [2025-12-18T13:03:09.958090100] Set chromedriver.exe as executable !
-12:03:09  [2025-12-18T13:03:09.958090100] Set LICENSE.chromedriver as executable !
-12:03:09  [2025-12-18T13:03:09.958090100] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:09  [2025-12-18T13:03:09.958090100] Set credits.html as executable !
-12:03:09  [2025-12-18T13:03:09.959093100] Set LICENSE as executable !
-12:03:09  [2025-12-18T13:03:09.959093100] Set msedgedriver.exe as executable !
-12:03:09  [2025-12-18T13:03:09.959093100] Set MicrosoftWebDriver.exe as executable !
-12:03:09  [2025-12-18T13:03:09.959093100] Set geckodriver.exe as executable !
-12:03:09  [2025-12-18T13:03:09.959093100] Set IEDriverServer.exe as executable !
-12:03:09  [2025-12-18T13:03:09.960091600] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite" -reportFolder="Reports\BPCE_SI_DAHAT1\124" -reportFileName="BPCE_SI_DAHAT1" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-18000949759028780463
-12:03:10  [2025-12-18T13:03:10.368120700] 
-12:03:10  [2025-12-18T13:03:10.368120700] 
-12:03:10  [2025-12-18T13:03:10.412121400] INFO: Katalon Version: 8.1.0
-12:03:10  [2025-12-18T13:03:10.420124600] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/TEST_SUITE_COLLECTIONS/without_group -reportFolder=Reports\TS_COLLECTION_OTHERS\124 -reportFileName=TS_COLLECTION_OTHERS
-12:03:10  [2025-12-18T13:03:10.423124600] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-4519943311482833501
-12:03:10  [2025-12-18T13:03:10.425122500] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-bbea5234/.metadata/.log
-12:03:10  [2025-12-18T13:03:10.428127] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:10  [2025-12-18T13:03:10.430129200] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:10  [2025-12-18T13:03:10.433123400] INFO: User home: C:\Users\adgi5appjenkins
-12:03:10  [2025-12-18T13:03:10.434123100] INFO: Java vendor: Azul Systems, Inc.
-12:03:10  [2025-12-18T13:03:10.436123500] INFO: Java version: 1.8.0_282
-12:03:10  [2025-12-18T13:03:10.437125400] INFO: Local OS: Windows Server 2016 64bit
-12:03:11  [2025-12-18T13:03:11.048167400] INFO: CPU load: 36%
-12:03:11  [2025-12-18T13:03:11.051169] INFO: Total memory: 8191 MB
-12:03:11  [2025-12-18T13:03:11.053169400] INFO: Free memory: 2199 MB
-12:03:11  [2025-12-18T13:03:11.060168200] Start getting machine ID on Windows
-12:03:11  [2025-12-18T13:03:11.156173800] Start appending additional signatures
-12:03:11  [2025-12-18T13:03:11.164175200] hardwareSerialNumber 
-12:03:11  [2025-12-18T13:03:11.167178200] osDependentUsername adgi5appjenkins
-12:03:11  [2025-12-18T13:03:11.169176500] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:11  [2025-12-18T13:03:11.171177600] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:11  [2025-12-18T13:03:11.173178] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:11  [2025-12-18T13:03:11.182176500] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:11  [2025-12-18T13:03:11.185177] 
-12:03:11  [2025-12-18T13:03:11.185177] 
-12:03:11  [2025-12-18T13:03:11.205179400] Activating...
-12:03:11  [2025-12-18T13:03:11.211180] Start activating offline...
-12:03:11  [2025-12-18T13:03:11.213179700] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:11  [2025-12-18T13:03:11.231181] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:11  [2025-12-18T13:03:11.587211900] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:11  [2025-12-18T13:03:11.589210900] The number of valid offline licenses: 1
-12:03:12  [2025-12-18T13:03:12.151251400] The number of Runtime Engine running sessions: 3
-12:03:12  [2025-12-18T13:03:12.182255300] License quota exceeded
-12:03:12  [2025-12-18T13:03:12.182255300] 
-12:03:12  [2025-12-18T13:03:12.182255300] Offline activation failed.
-12:03:12  [2025-12-18T13:03:12.182255300] Start activating online...
-12:03:12  [2025-12-18T13:03:12.537284] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:12  [2025-12-18T13:03:12.537284] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:12  [2025-12-18T13:03:12.537284] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:12  [2025-12-18T13:03:12.537284] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:12  [2025-12-18T13:03:12.537284] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:12  [2025-12-18T13:03:12.537284] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:12  [2025-12-18T13:03:12.537284] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:12  [2025-12-18T13:03:12.537284] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:12  [2025-12-18T13:03:12.537284] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:12  [2025-12-18T13:03:12.537284] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:12  [2025-12-18T13:03:12.537284] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:12  [2025-12-18T13:03:12.537284] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:12  [2025-12-18T13:03:12.537284] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:12  [2025-12-18T13:03:12.537284] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:12  [2025-12-18T13:03:12.537284] 
-12:03:12  [2025-12-18T13:03:12.538284400] All launchers terminated
-12:03:13  [2025-12-18T13:03:13.270336300] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-d4bb9d3e
-12:03:13  [2025-12-18T13:03:13.507352200] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:13  [2025-12-18T13:03:13.508353400] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:13  [2025-12-18T13:03:13.876383] 
-12:03:13  [2025-12-18T13:03:13.876383] 
-12:03:13  [2025-12-18T13:03:13.879380100] INFO: Katalon Version: 8.1.0
-12:03:13  [2025-12-18T13:03:13.886380700] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/BPCE_SI/bpce_si_pr_dahat01_suite -reportFolder=Reports\BPCE_SI_DAHAT1\124 -reportFileName=BPCE_SI_DAHAT1
-12:03:13  [2025-12-18T13:03:13.889380700] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-18000949759028780463
-12:03:13  [2025-12-18T13:03:13.891380100] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-d4bb9d3e/.metadata/.log
-12:03:13  [2025-12-18T13:03:13.893380100] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:13  [2025-12-18T13:03:13.895380200] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:13  [2025-12-18T13:03:13.900382500] INFO: User home: C:\Users\adgi5appjenkins
-12:03:13  [2025-12-18T13:03:13.900382500] INFO: Java vendor: Azul Systems, Inc.
-12:03:13  [2025-12-18T13:03:13.902381100] INFO: Java version: 1.8.0_282
-12:03:13  [2025-12-18T13:03:13.904382600] INFO: Local OS: Windows Server 2016 64bit
-12:03:14  [2025-12-18T13:03:14.379416] INFO: CPU load: 34%
-12:03:14  [2025-12-18T13:03:14.382416800] INFO: Total memory: 8191 MB
-12:03:14  [2025-12-18T13:03:14.385416900] INFO: Free memory: 2312 MB
-12:03:14  [2025-12-18T13:03:14.392419700] Start getting machine ID on Windows
-12:03:14  [2025-12-18T13:03:14.451422700] Start appending additional signatures
-12:03:14  [2025-12-18T13:03:14.458424800] hardwareSerialNumber 
-12:03:14  [2025-12-18T13:03:14.461425200] osDependentUsername adgi5appjenkins
-12:03:14  [2025-12-18T13:03:14.463428600] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:14  [2025-12-18T13:03:14.465424600] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:14  [2025-12-18T13:03:14.467424] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:14  [2025-12-18T13:03:14.477424700] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:14  [2025-12-18T13:03:14.479423300] 
-12:03:14  [2025-12-18T13:03:14.479423300] 
-12:03:14  [2025-12-18T13:03:14.506427800] Activating...
-12:03:14  [2025-12-18T13:03:14.513426900] Start activating offline...
-12:03:14  [2025-12-18T13:03:14.515428500] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:14  [2025-12-18T13:03:14.524429800] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:14  [2025-12-18T13:03:14.862455800] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:14  [2025-12-18T13:03:14.865455100] The number of valid offline licenses: 1
-[Pipeline] echo
-12:03:15  Suite PASSED: BPCE_SI_DAHAT1
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-12:03:15  [2025-12-18T13:03:15.154474400] The number of Runtime Engine running sessions: 2
-12:03:15  [2025-12-18T13:03:15.156477] License quota exceeded
-12:03:15  [2025-12-18T13:03:15.157476] 
-12:03:15  [2025-12-18T13:03:15.157476] Offline activation failed.
-12:03:15  [2025-12-18T13:03:15.157476] Start activating online...
-12:03:15  [2025-12-18T13:03:15.389490700] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:15  [2025-12-18T13:03:15.389490700] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:15  [2025-12-18T13:03:15.389490700] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:15  [2025-12-18T13:03:15.389490700] 
-12:03:15  [2025-12-18T13:03:15.390492600] All launchers terminated
-[Pipeline] stage
-[Pipeline] { (Suite BPCE_SI_DAHAT2)
-[Pipeline] echo
-12:03:17  Running suite: BPCE_SI_DAHAT2
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:18  
-12:03:18  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\BPCE_SI_DAHAT2\124" mkdir "Reports\BPCE_SI_DAHAT2\124" 
-[Pipeline] executeKatalon
-12:03:14  [2025-12-18T13:03:14.998471500] 
-12:03:14  [2025-12-18T13:03:14.998471500] --------------------------------------------------------------------------------
-12:03:14  [2025-12-18T13:03:14.998471500] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:03:14  [2025-12-18T13:03:14.998471500]  - 20251218_124829.....................................................3/19(16%)
-12:03:14  [2025-12-18T13:03:14.998471500] --------------------------------------------------------------------------------
-12:03:14  [2025-12-18T13:03:14.998471500] 
-12:03:18  [2025-12-18T13:03:18.388722400] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:18  [2025-12-18T13:03:18.671736600] Making driver executables...
-12:03:18  [2025-12-18T13:03:18.671736600] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:18  [2025-12-18T13:03:18.671736600] Set chromedriver.exe as executable !
-12:03:18  [2025-12-18T13:03:18.671736600] Set LICENSE.chromedriver as executable !
-12:03:18  [2025-12-18T13:03:18.671736600] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:18  [2025-12-18T13:03:18.671736600] Set chromedriver.exe as executable !
-12:03:18  [2025-12-18T13:03:18.671736600] Set LICENSE.chromedriver as executable !
-12:03:18  [2025-12-18T13:03:18.671736600] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:18  [2025-12-18T13:03:18.672736300] Set credits.html as executable !
-12:03:18  [2025-12-18T13:03:18.672736300] Set LICENSE as executable !
-12:03:18  [2025-12-18T13:03:18.672736300] Set msedgedriver.exe as executable !
-12:03:18  [2025-12-18T13:03:18.672736300] Set MicrosoftWebDriver.exe as executable !
-12:03:18  [2025-12-18T13:03:18.672736300] Set geckodriver.exe as executable !
-12:03:18  [2025-12-18T13:03:18.672736300] Set IEDriverServer.exe as executable !
-12:03:18  [2025-12-18T13:03:18.673737800] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite" -reportFolder="Reports\BPCE_SI_DAHAT2\124" -reportFileName="BPCE_SI_DAHAT2" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-3725254898753608407
-12:03:21  [2025-12-18T13:03:21.066920900] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-3ad3a9d6
-12:03:21  [2025-12-18T13:03:21.315935300] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:21  [2025-12-18T13:03:21.318936100] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:21  [2025-12-18T13:03:21.658963900] 
-12:03:21  [2025-12-18T13:03:21.658963900] 
-12:03:21  [2025-12-18T13:03:21.662961100] INFO: Katalon Version: 8.1.0
-12:03:21  [2025-12-18T13:03:21.670962400] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/BPCE_SI/bpce_si_pr_dahat02_suite -reportFolder=Reports\BPCE_SI_DAHAT2\124 -reportFileName=BPCE_SI_DAHAT2
-12:03:21  [2025-12-18T13:03:21.673962800] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-3725254898753608407
-12:03:21  [2025-12-18T13:03:21.675962200] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-3ad3a9d6/.metadata/.log
-12:03:21  [2025-12-18T13:03:21.677962600] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:21  [2025-12-18T13:03:21.678961900] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:21  [2025-12-18T13:03:21.680963] INFO: User home: C:\Users\adgi5appjenkins
-12:03:21  [2025-12-18T13:03:21.682963800] INFO: Java vendor: Azul Systems, Inc.
-12:03:21  [2025-12-18T13:03:21.684962800] INFO: Java version: 1.8.0_282
-12:03:21  [2025-12-18T13:03:21.685963100] INFO: Local OS: Windows Server 2016 64bit
-12:03:22  [2025-12-18T13:03:22.203002700] INFO: CPU load: 63%
-12:03:22  [2025-12-18T13:03:22.207001300] INFO: Total memory: 8191 MB
-12:03:22  [2025-12-18T13:03:22.211000700] INFO: Free memory: 2325 MB
-12:03:22  [2025-12-18T13:03:22.221003300] Start getting machine ID on Windows
-12:03:22  [2025-12-18T13:03:22.288009100] Start appending additional signatures
-12:03:22  [2025-12-18T13:03:22.310010500] hardwareSerialNumber 
-12:03:22  [2025-12-18T13:03:22.312010600] osDependentUsername adgi5appjenkins
-12:03:22  [2025-12-18T13:03:22.314012500] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:22  [2025-12-18T13:03:22.317014400] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:22  [2025-12-18T13:03:22.320015600] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:22  [2025-12-18T13:03:22.332012] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:22  [2025-12-18T13:03:22.335011] 
-12:03:22  [2025-12-18T13:03:22.335011] 
-12:03:22  [2025-12-18T13:03:22.359010700] Activating...
-12:03:22  [2025-12-18T13:03:22.365013] Start activating offline...
-12:03:22  [2025-12-18T13:03:22.368012800] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:22  [2025-12-18T13:03:22.374013] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:22  [2025-12-18T13:03:22.746041800] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:22  [2025-12-18T13:03:22.752043500] The number of valid offline licenses: 1
-12:03:23  [2025-12-18T13:03:23.425094900] The number of Runtime Engine running sessions: 2
-12:03:23  [2025-12-18T13:03:23.428095700] License quota exceeded
-12:03:23  [2025-12-18T13:03:23.428095700] 
-12:03:23  [2025-12-18T13:03:23.428095700] Offline activation failed.
-12:03:23  [2025-12-18T13:03:23.428095700] Start activating online...
-12:03:23  [2025-12-18T13:03:23.708116100] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:23  [2025-12-18T13:03:23.708116100] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:23  [2025-12-18T13:03:23.708116100] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:23  [2025-12-18T13:03:23.709114] 
-12:03:23  [2025-12-18T13:03:23.711114800] All launchers terminated
-[Pipeline] echo
-12:03:24  Suite PASSED: BPCE_SI_DAHAT2
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite BPCE_SI)
-[Pipeline] echo
-12:03:24  Running suite: BPCE_SI
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:25  
-12:03:25  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\BPCE_SI\124" mkdir "Reports\BPCE_SI\124" 
-[Pipeline] executeKatalon
-12:03:25  [2025-12-18T13:03:25.247229900] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:25  [2025-12-18T13:03:25.544252700] Making driver executables...
-12:03:25  [2025-12-18T13:03:25.544252700] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:25  [2025-12-18T13:03:25.544252700] Set chromedriver.exe as executable !
-12:03:25  [2025-12-18T13:03:25.544252700] Set LICENSE.chromedriver as executable !
-12:03:25  [2025-12-18T13:03:25.544252700] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:25  [2025-12-18T13:03:25.544252700] Set chromedriver.exe as executable !
-12:03:25  [2025-12-18T13:03:25.544252700] Set LICENSE.chromedriver as executable !
-12:03:25  [2025-12-18T13:03:25.545253800] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:25  [2025-12-18T13:03:25.545253800] Set credits.html as executable !
-12:03:25  [2025-12-18T13:03:25.545253800] Set LICENSE as executable !
-12:03:25  [2025-12-18T13:03:25.545253800] Set msedgedriver.exe as executable !
-12:03:25  [2025-12-18T13:03:25.545253800] Set MicrosoftWebDriver.exe as executable !
-12:03:25  [2025-12-18T13:03:25.545253800] Set geckodriver.exe as executable !
-12:03:25  [2025-12-18T13:03:25.546252800] Set IEDriverServer.exe as executable !
-12:03:25  [2025-12-18T13:03:25.547252100] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/BPCE_SI/bpcesi_suite" -reportFolder="Reports\BPCE_SI\124" -reportFileName="BPCE_SI" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-13813016191788964309
-12:03:27  [2025-12-18T13:03:27.846423700] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-cc5f6e48
-12:03:28  [2025-12-18T13:03:28.062441] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:28  [2025-12-18T13:03:28.064442100] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:20  [2025-12-18T13:03:20.387868600] 2025-12-18 13:03:20.387 INFO  c.k.k.c.webui.common.WebUiCommonHelper   - Unable to find the element located by 'By.xpath: //table[@id='proxyActionBar_x_plhWorkflow']/tbody/tr/td/button'. Please recheck the objects properties to make sure the desired element is located. 
-12:03:20  [2025-12-18T13:03:20.389865] 2025-12-18 13:03:20.387 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] Failed to find element with id 'Object Repository/purchase_request/buttonLaunchPRworkflow'. Try using Self-healing.
-12:03:20  [2025-12-18T13:03:20.484875] 2025-12-18 13:03:20.484 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] The current locator of test object 'Object Repository/purchase_request/buttonLaunchPRworkflow' was broken. Propose an alternative one: '(.//*[normalize-space(text()) and normalize-space(.)='Save'])[2]/following::button[1]'.
-12:03:28  [2025-12-18T13:03:28.421465700] 
-12:03:28  [2025-12-18T13:03:28.421465700] 
-12:03:28  [2025-12-18T13:03:28.425464800] INFO: Katalon Version: 8.1.0
-12:03:28  [2025-12-18T13:03:28.432469] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/BPCE_SI/bpcesi_suite -reportFolder=Reports\BPCE_SI\124 -reportFileName=BPCE_SI
-12:03:28  [2025-12-18T13:03:28.434468700] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-13813016191788964309
-12:03:28  [2025-12-18T13:03:28.436467300] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-cc5f6e48/.metadata/.log
-12:03:28  [2025-12-18T13:03:28.438466300] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:28  [2025-12-18T13:03:28.439467800] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:28  [2025-12-18T13:03:28.441466400] INFO: User home: C:\Users\adgi5appjenkins
-12:03:28  [2025-12-18T13:03:28.443467600] INFO: Java vendor: Azul Systems, Inc.
-12:03:28  [2025-12-18T13:03:28.444469400] INFO: Java version: 1.8.0_282
-12:03:28  [2025-12-18T13:03:28.445469500] INFO: Local OS: Windows Server 2016 64bit
-12:03:29  [2025-12-18T13:03:29.018514200] INFO: CPU load: 60%
-12:03:29  [2025-12-18T13:03:29.022512500] INFO: Total memory: 8191 MB
-12:03:29  [2025-12-18T13:03:29.025514] INFO: Free memory: 2375 MB
-12:03:29  [2025-12-18T13:03:29.034513900] Start getting machine ID on Windows
-12:03:29  [2025-12-18T13:03:29.104522300] Start appending additional signatures
-12:03:29  [2025-12-18T13:03:29.121520500] hardwareSerialNumber 
-12:03:29  [2025-12-18T13:03:29.123518700] osDependentUsername adgi5appjenkins
-12:03:29  [2025-12-18T13:03:29.125520600] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:29  [2025-12-18T13:03:29.126519900] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:29  [2025-12-18T13:03:29.128522200] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:29  [2025-12-18T13:03:29.141519900] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:29  [2025-12-18T13:03:29.144521500] 
-12:03:29  [2025-12-18T13:03:29.144521500] 
-12:03:29  [2025-12-18T13:03:29.171524400] Activating...
-12:03:29  [2025-12-18T13:03:29.178526] Start activating offline...
-12:03:29  [2025-12-18T13:03:29.180525] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:29  [2025-12-18T13:03:29.188526300] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:29  [2025-12-18T13:03:29.530548200] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:29  [2025-12-18T13:03:29.532550500] The number of valid offline licenses: 1
-[Pipeline] echo
-12:03:30  Suite PASSED: BPCE_SI
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-12:03:29  [2025-12-18T13:03:29.844571] The number of Runtime Engine running sessions: 2
-12:03:29  [2025-12-18T13:03:29.847571400] License quota exceeded
-12:03:29  [2025-12-18T13:03:29.847571400] 
-12:03:29  [2025-12-18T13:03:29.847571400] Offline activation failed.
-12:03:29  [2025-12-18T13:03:29.847571400] Start activating online...
-12:03:30  [2025-12-18T13:03:30.178597600] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:30  [2025-12-18T13:03:30.178597600] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:30  [2025-12-18T13:03:30.178597600] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:30  [2025-12-18T13:03:30.178597600] 
-12:03:30  [2025-12-18T13:03:30.180598400] All launchers terminated
-[Pipeline] stage
-[Pipeline] { (Suite BPCE_ACHATS)
-[Pipeline] echo
-12:03:30  Running suite: BPCE_ACHATS
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:31  
-12:03:31  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\BPCE_ACHATS\124" mkdir "Reports\BPCE_ACHATS\124" 
-[Pipeline] executeKatalon
-12:03:31  [2025-12-18T13:03:31.581706300] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:31  [2025-12-18T13:03:31.889730100] Making driver executables...
-12:03:31  [2025-12-18T13:03:31.889730100] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:31  [2025-12-18T13:03:31.889730100] Set chromedriver.exe as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set LICENSE.chromedriver as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set chromedriver.exe as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set LICENSE.chromedriver as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set credits.html as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set LICENSE as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set msedgedriver.exe as executable !
-12:03:31  [2025-12-18T13:03:31.890728700] Set MicrosoftWebDriver.exe as executable !
-12:03:31  [2025-12-18T13:03:31.891727600] Set geckodriver.exe as executable !
-12:03:31  [2025-12-18T13:03:31.891727600] Set IEDriverServer.exe as executable !
-12:03:31  [2025-12-18T13:03:31.892729100] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/BPCE_ACHATS/bpce_achats_suite" -reportFolder="Reports\BPCE_ACHATS\124" -reportFileName="BPCE_ACHATS" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-2615857228621809577
-12:03:34  [2025-12-18T13:03:34.089888300] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-41e0cc1b
-12:03:34  [2025-12-18T13:03:34.294909200] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:34  [2025-12-18T13:03:34.295907100] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:34  [2025-12-18T13:03:34.649932800] 
-12:03:34  [2025-12-18T13:03:34.649932800] 
-12:03:34  [2025-12-18T13:03:34.653932600] INFO: Katalon Version: 8.1.0
-12:03:34  [2025-12-18T13:03:34.660935] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/BPCE_ACHATS/bpce_achats_suite -reportFolder=Reports\BPCE_ACHATS\124 -reportFileName=BPCE_ACHATS
-12:03:34  [2025-12-18T13:03:34.663935800] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-2615857228621809577
-12:03:34  [2025-12-18T13:03:34.665933300] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-41e0cc1b/.metadata/.log
-12:03:34  [2025-12-18T13:03:34.667934800] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:34  [2025-12-18T13:03:34.669935300] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:34  [2025-12-18T13:03:34.674938] INFO: User home: C:\Users\adgi5appjenkins
-12:03:34  [2025-12-18T13:03:34.676937300] INFO: Java vendor: Azul Systems, Inc.
-12:03:34  [2025-12-18T13:03:34.679936700] INFO: Java version: 1.8.0_282
-12:03:34  [2025-12-18T13:03:34.681936] INFO: Local OS: Windows Server 2016 64bit
-12:03:35  [2025-12-18T13:03:35.164972500] INFO: CPU load: 60%
-12:03:35  [2025-12-18T13:03:35.168973] INFO: Total memory: 8191 MB
-12:03:35  [2025-12-18T13:03:35.171973100] INFO: Free memory: 2390 MB
-12:03:35  [2025-12-18T13:03:35.182973700] Start getting machine ID on Windows
-12:03:35  [2025-12-18T13:03:35.244980800] Start appending additional signatures
-12:03:35  [2025-12-18T13:03:35.254981400] hardwareSerialNumber 
-12:03:35  [2025-12-18T13:03:35.258980100] osDependentUsername adgi5appjenkins
-12:03:35  [2025-12-18T13:03:35.260979700] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:35  [2025-12-18T13:03:35.262979800] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:35  [2025-12-18T13:03:35.264979100] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:35  [2025-12-18T13:03:35.275981600] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:35  [2025-12-18T13:03:35.277979800] 
-12:03:35  [2025-12-18T13:03:35.277979800] 
-12:03:35  [2025-12-18T13:03:35.296982500] Activating...
-12:03:35  [2025-12-18T13:03:35.303984500] Start activating offline...
-12:03:35  [2025-12-18T13:03:35.305984600] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:35  [2025-12-18T13:03:35.315983] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:35  [2025-12-18T13:03:35.654005200] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:35  [2025-12-18T13:03:35.657005700] The number of valid offline licenses: 1
-[Pipeline] echo
-12:03:36  Suite PASSED: BPCE_ACHATS
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite BPCE_ACHATS_GS_BANK_INFO)
-12:03:35  [2025-12-18T13:03:35.979031900] The number of Runtime Engine running sessions: 2
-12:03:35  [2025-12-18T13:03:35.981028300] License quota exceeded
-12:03:35  [2025-12-18T13:03:35.981028300] 
-12:03:35  [2025-12-18T13:03:35.981028300] Offline activation failed.
-12:03:35  [2025-12-18T13:03:35.981028300] Start activating online...
-12:03:36  [2025-12-18T13:03:36.209047200] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:36  [2025-12-18T13:03:36.209047200] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:36  [2025-12-18T13:03:36.209047200] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:36  [2025-12-18T13:03:36.209047200] 
-12:03:36  [2025-12-18T13:03:36.211049100] All launchers terminated
-[Pipeline] echo
-12:03:36  Running suite: BPCE_ACHATS_GS_BANK_INFO
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:37  
-12:03:37  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\BPCE_ACHATS_GS_BANK_INFO\124" mkdir "Reports\BPCE_ACHATS_GS_BANK_INFO\124" 
-[Pipeline] executeKatalon
-12:03:29  [2025-12-18T13:03:29.999622600] 
-12:03:29  [2025-12-18T13:03:29.999622600] --------------------------------------------------------------------------------
-12:03:29  [2025-12-18T13:03:29.999622600] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:03:29  [2025-12-18T13:03:29.999622600]  - 20251218_124829.....................................................3/19(16%)
-12:03:29  [2025-12-18T13:03:29.999622600] --------------------------------------------------------------------------------
-12:03:29  [2025-12-18T13:03:29.999622600] 
-12:03:37  [2025-12-18T13:03:37.588609800] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:37  [2025-12-18T13:03:37.884628100] Making driver executables...
-12:03:37  [2025-12-18T13:03:37.884628100] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:37  [2025-12-18T13:03:37.884628100] Set chromedriver.exe as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set LICENSE.chromedriver as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set chromedriver.exe as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set LICENSE.chromedriver as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set credits.html as executable !
-12:03:37  [2025-12-18T13:03:37.884628100] Set LICENSE as executable !
-12:03:37  [2025-12-18T13:03:37.885630300] Set msedgedriver.exe as executable !
-12:03:37  [2025-12-18T13:03:37.887628200] Set MicrosoftWebDriver.exe as executable !
-12:03:37  [2025-12-18T13:03:37.887628200] Set geckodriver.exe as executable !
-12:03:37  [2025-12-18T13:03:37.887628200] Set IEDriverServer.exe as executable !
-12:03:37  [2025-12-18T13:03:37.888626] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo" -reportFolder="Reports\BPCE_ACHATS_GS_BANK_INFO\124" -reportFileName="BPCE_ACHATS_GS_BANK_INFO" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-11793672797758544972
-12:03:40  [2025-12-18T13:03:40.171810300] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-55249c69
-12:03:40  [2025-12-18T13:03:40.397815] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:40  [2025-12-18T13:03:40.398817600] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:40  [2025-12-18T13:03:40.766844300] 
-12:03:40  [2025-12-18T13:03:40.766844300] 
-12:03:40  [2025-12-18T13:03:40.769843600] INFO: Katalon Version: 8.1.0
-12:03:40  [2025-12-18T13:03:40.776843800] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/BPCE_ACHATS/bpce_goldenSource_bankingInfo -reportFolder=Reports\BPCE_ACHATS_GS_BANK_INFO\124 -reportFileName=BPCE_ACHATS_GS_BANK_INFO
-12:03:40  [2025-12-18T13:03:40.779846400] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-11793672797758544972
-12:03:40  [2025-12-18T13:03:40.781845400] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-55249c69/.metadata/.log
-12:03:40  [2025-12-18T13:03:40.784846200] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:40  [2025-12-18T13:03:40.787846300] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:40  [2025-12-18T13:03:40.789844500] INFO: User home: C:\Users\adgi5appjenkins
-12:03:40  [2025-12-18T13:03:40.792844600] INFO: Java vendor: Azul Systems, Inc.
-12:03:40  [2025-12-18T13:03:40.794845700] INFO: Java version: 1.8.0_282
-12:03:40  [2025-12-18T13:03:40.795843500] INFO: Local OS: Windows Server 2016 64bit
-12:03:41  [2025-12-18T13:03:41.274879300] INFO: CPU load: 71%
-12:03:41  [2025-12-18T13:03:41.277880100] INFO: Total memory: 8191 MB
-12:03:41  [2025-12-18T13:03:41.279879400] INFO: Free memory: 2396 MB
-12:03:41  [2025-12-18T13:03:41.288881900] Start getting machine ID on Windows
-12:03:41  [2025-12-18T13:03:41.359888200] Start appending additional signatures
-12:03:41  [2025-12-18T13:03:41.368886300] hardwareSerialNumber 
-12:03:41  [2025-12-18T13:03:41.370890100] osDependentUsername adgi5appjenkins
-12:03:41  [2025-12-18T13:03:41.373888] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:41  [2025-12-18T13:03:41.376889200] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:41  [2025-12-18T13:03:41.379889300] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:41  [2025-12-18T13:03:41.392889700] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:41  [2025-12-18T13:03:41.394889700] 
-12:03:41  [2025-12-18T13:03:41.395892] 
-12:03:41  [2025-12-18T13:03:41.414892900] Activating...
-12:03:41  [2025-12-18T13:03:41.422893600] Start activating offline...
-12:03:41  [2025-12-18T13:03:41.425892600] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:41  [2025-12-18T13:03:41.435893600] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:41  [2025-12-18T13:03:41.784919500] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:41  [2025-12-18T13:03:41.787920700] The number of valid offline licenses: 1
-[Pipeline] echo
-12:03:42  Suite PASSED: BPCE_ACHATS_GS_BANK_INFO
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite OPS_ACCEPT_TERMS)
-[Pipeline] echo
-12:03:43  Running suite: OPS_ACCEPT_TERMS
-12:03:42  [2025-12-18T13:03:42.065939200] The number of Runtime Engine running sessions: 2
-12:03:42  [2025-12-18T13:03:42.067941900] License quota exceeded
-12:03:42  [2025-12-18T13:03:42.067941900] 
-12:03:42  [2025-12-18T13:03:42.067941900] Offline activation failed.
-12:03:42  [2025-12-18T13:03:42.067941900] Start activating online...
-12:03:42  [2025-12-18T13:03:42.329962800] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:42  [2025-12-18T13:03:42.329962800] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:42  [2025-12-18T13:03:42.329962800] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:42  [2025-12-18T13:03:42.329962800] 
-12:03:42  [2025-12-18T13:03:42.331964300] All launchers terminated
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:43  
-12:03:43  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\OPS_ACCEPT_TERMS\124" mkdir "Reports\OPS_ACCEPT_TERMS\124" 
-[Pipeline] executeKatalon
-12:03:43  [2025-12-18T13:03:43.738067500] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:44  [2025-12-18T13:03:44.048087900] Making driver executables...
-12:03:44  [2025-12-18T13:03:44.048087900] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:44  [2025-12-18T13:03:44.049087900] Set chromedriver.exe as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set LICENSE.chromedriver as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set chromedriver.exe as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set LICENSE.chromedriver as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set credits.html as executable !
-12:03:44  [2025-12-18T13:03:44.049087900] Set LICENSE as executable !
-12:03:44  [2025-12-18T13:03:44.050088300] Set msedgedriver.exe as executable !
-12:03:44  [2025-12-18T13:03:44.050088300] Set MicrosoftWebDriver.exe as executable !
-12:03:44  [2025-12-18T13:03:44.050088300] Set geckodriver.exe as executable !
-12:03:44  [2025-12-18T13:03:44.050088300] Set IEDriverServer.exe as executable !
-12:03:44  [2025-12-18T13:03:44.051087600] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/OPS_AUTOMATION/accept_terms_suite" -reportFolder="Reports\OPS_ACCEPT_TERMS\124" -reportFileName="OPS_ACCEPT_TERMS" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-129314866856833497
-12:03:46  [2025-12-18T13:03:46.278255100] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-c6b1ba0f
-12:03:46  [2025-12-18T13:03:46.502270800] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:46  [2025-12-18T13:03:46.503269] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:46  [2025-12-18T13:03:46.858296900] 
-12:03:46  [2025-12-18T13:03:46.858296900] 
-12:03:46  [2025-12-18T13:03:46.861296600] INFO: Katalon Version: 8.1.0
-12:03:46  [2025-12-18T13:03:46.870297700] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/OPS_AUTOMATION/accept_terms_suite -reportFolder=Reports\OPS_ACCEPT_TERMS\124 -reportFileName=OPS_ACCEPT_TERMS
-12:03:46  [2025-12-18T13:03:46.872297700] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-129314866856833497
-12:03:46  [2025-12-18T13:03:46.874298900] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-c6b1ba0f/.metadata/.log
-12:03:46  [2025-12-18T13:03:46.876297500] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:46  [2025-12-18T13:03:46.878300500] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:46  [2025-12-18T13:03:46.884299600] INFO: User home: C:\Users\adgi5appjenkins
-12:03:46  [2025-12-18T13:03:46.886300700] INFO: Java vendor: Azul Systems, Inc.
-12:03:46  [2025-12-18T13:03:46.888299] INFO: Java version: 1.8.0_282
-12:03:46  [2025-12-18T13:03:46.889301600] INFO: Local OS: Windows Server 2016 64bit
-12:03:47  [2025-12-18T13:03:47.368338300] INFO: CPU load: 65%
-12:03:47  [2025-12-18T13:03:47.372335900] INFO: Total memory: 8191 MB
-12:03:47  [2025-12-18T13:03:47.374337] INFO: Free memory: 2384 MB
-12:03:47  [2025-12-18T13:03:47.382340900] Start getting machine ID on Windows
-12:03:47  [2025-12-18T13:03:47.450341300] Start appending additional signatures
-12:03:47  [2025-12-18T13:03:47.456345500] hardwareSerialNumber 
-12:03:47  [2025-12-18T13:03:47.458344500] osDependentUsername adgi5appjenkins
-12:03:47  [2025-12-18T13:03:47.460347100] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:47  [2025-12-18T13:03:47.462342100] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:47  [2025-12-18T13:03:47.463343600] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:47  [2025-12-18T13:03:47.472347900] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:47  [2025-12-18T13:03:47.474345700] 
-12:03:47  [2025-12-18T13:03:47.474345700] 
-12:03:47  [2025-12-18T13:03:47.493344900] Activating...
-12:03:47  [2025-12-18T13:03:47.499346200] Start activating offline...
-12:03:47  [2025-12-18T13:03:47.502345900] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:47  [2025-12-18T13:03:47.509343200] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-12:03:47  [2025-12-18T13:03:47.814368100] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:47  [2025-12-18T13:03:47.817370] The number of valid offline licenses: 1
-12:03:45  [2025-12-18T13:03:45.002161200] 
-12:03:45  [2025-12-18T13:03:45.002161200] --------------------------------------------------------------------------------
-12:03:45  [2025-12-18T13:03:45.002161200] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:03:45  [2025-12-18T13:03:45.002161200]  - 20251218_124829.....................................................3/19(16%)
-12:03:45  [2025-12-18T13:03:45.002161200] --------------------------------------------------------------------------------
-12:03:45  [2025-12-18T13:03:45.002161200] 
-[Pipeline] echo
-12:03:48  Suite PASSED: OPS_ACCEPT_TERMS
-[Pipeline] }
-[Pipeline] // catchError
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Suite OPS_AFTER_REFRESH)
-12:03:48  [2025-12-18T13:03:48.125394200] The number of Runtime Engine running sessions: 2
-12:03:48  [2025-12-18T13:03:48.127395300] License quota exceeded
-12:03:48  [2025-12-18T13:03:48.127395300] 
-12:03:48  [2025-12-18T13:03:48.127395300] Offline activation failed.
-12:03:48  [2025-12-18T13:03:48.127395300] Start activating online...
-12:03:48  [2025-12-18T13:03:48.385412600] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:48  [2025-12-18T13:03:48.385412600] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:48  [2025-12-18T13:03:48.385412600] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:48  [2025-12-18T13:03:48.385412600] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:48  [2025-12-18T13:03:48.385412600] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:48  [2025-12-18T13:03:48.385412600] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:48  [2025-12-18T13:03:48.385412600] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:48  [2025-12-18T13:03:48.386411100] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:48  [2025-12-18T13:03:48.386411100] 
-12:03:48  [2025-12-18T13:03:48.387413700] All launchers terminated
-[Pipeline] echo
-12:03:49  Running suite: OPS_AFTER_REFRESH
-[Pipeline] catchError
-[Pipeline] {
-[Pipeline] bat
-12:03:49  
-12:03:49  D:\jenkins\work\workspace\GI5\P2P\p2p-tests>if not exist "Reports\OPS_AFTER_REFRESH\124" mkdir "Reports\OPS_AFTER_REFRESH\124" 
-[Pipeline] executeKatalon
-12:03:49  [2025-12-18T13:03:49.987532700] Using Katalon Studio at C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0
-12:03:50  [2025-12-18T13:03:50.257548] Making driver executables...
-12:03:50  [2025-12-18T13:03:50.257548] Drivers folder at: C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\configuration\resources\drivers
-12:03:50  [2025-12-18T13:03:50.257548] Set chromedriver.exe as executable !
-12:03:50  [2025-12-18T13:03:50.257548] Set LICENSE.chromedriver as executable !
-12:03:50  [2025-12-18T13:03:50.257548] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:50  [2025-12-18T13:03:50.257548] Set chromedriver.exe as executable !
-12:03:50  [2025-12-18T13:03:50.258548400] Set LICENSE.chromedriver as executable !
-12:03:50  [2025-12-18T13:03:50.258548400] Set THIRD_PARTY_NOTICES.chromedriver as executable !
-12:03:50  [2025-12-18T13:03:50.258548400] Set credits.html as executable !
-12:03:50  [2025-12-18T13:03:50.258548400] Set LICENSE as executable !
-12:03:50  [2025-12-18T13:03:50.258548400] Set msedgedriver.exe as executable !
-12:03:50  [2025-12-18T13:03:50.259547700] Set MicrosoftWebDriver.exe as executable !
-12:03:50  [2025-12-18T13:03:50.259547700] Set geckodriver.exe as executable !
-12:03:50  [2025-12-18T13:03:50.259547700] Set IEDriverServer.exe as executable !
-12:03:50  [2025-12-18T13:03:50.260548100] Execute [cmd, /c, C:\Users\adgi5appjenkins\Documents\Katalon_Studio_Engine_Windows_64-8.1.0\katalonc.exe -noSplash  -runMode=console  -projectPath="D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj" -executionProfile="prepevol05" -browserType="Chrome" -testSuitePath="Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment" -reportFolder="Reports\OPS_AFTER_REFRESH\124" -reportFileName="OPS_AFTER_REFRESH" ] in C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-17328309638727328113
-12:03:52  [2025-12-18T13:03:52.538710700] Katalon workspace folder is set to default location: C:\Users\ADGI5A~1\AppData\Local\Temp\session-4a392112
-12:03:52  [2025-12-18T13:03:52.793728900] Starting Groovy-Eclipse compiler resolver. Specified compiler level: unspecified
-12:03:52  [2025-12-18T13:03:52.795729700] 138 org.codehaus.groovy_2.4.20.v202009301404-e2006-RELEASE ACTIVE
-12:03:53  [2025-12-18T13:03:53.188757400] 
-12:03:53  [2025-12-18T13:03:53.188757400] 
-12:03:53  [2025-12-18T13:03:53.193757500] INFO: Katalon Version: 8.1.0
-12:03:53  [2025-12-18T13:03:53.202758100] INFO: Command-line arguments: -runMode=console -projectPath=D:\jenkins\work\workspace\GI5\P2P\p2p-tests\P2P.prj -executionProfile=prepevol05 -browserType=Chrome -testSuitePath=Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment -reportFolder=Reports\OPS_AFTER_REFRESH\124 -reportFileName=OPS_AFTER_REFRESH
-12:03:53  [2025-12-18T13:03:53.205758600] INFO: User working dir: C:\Users\ADGI5A~1\AppData\Local\Temp\katalon-17328309638727328113
-12:03:53  [2025-12-18T13:03:53.208759] INFO: Error log: C:/Users/adgi5appjenkins/AppData/Local/Temp/session-4a392112/.metadata/.log
-12:03:53  [2025-12-18T13:03:53.211758] INFO: Katalon TestOps server URL: https://analytics.katalon.com
-12:03:53  [2025-12-18T13:03:53.214756600] INFO: Katalon Store server URL: https://store.katalon.com
-12:03:53  [2025-12-18T13:03:53.223755400] INFO: User home: C:\Users\adgi5appjenkins
-12:03:53  [2025-12-18T13:03:53.223755400] INFO: Java vendor: Azul Systems, Inc.
-12:03:53  [2025-12-18T13:03:53.223755400] INFO: Java version: 1.8.0_282
-12:03:53  [2025-12-18T13:03:53.223755400] INFO: Local OS: Windows Server 2016 64bit
-12:03:53  [2025-12-18T13:03:53.737795700] INFO: CPU load: 78%
-12:03:53  [2025-12-18T13:03:53.747797400] INFO: Total memory: 8191 MB
-12:03:53  [2025-12-18T13:03:53.750798600] INFO: Free memory: 2367 MB
-12:03:53  [2025-12-18T13:03:53.767799800] Start getting machine ID on Windows
-12:03:53  [2025-12-18T13:03:53.835803300] Start appending additional signatures
-12:03:53  [2025-12-18T13:03:53.843803900] hardwareSerialNumber 
-12:03:53  [2025-12-18T13:03:53.845805100] osDependentUsername adgi5appjenkins
-12:03:53  [2025-12-18T13:03:53.848803300] End appending additional signatures 0d3c46e2-1ee8-434a-bb73-36432905e83a__adgi5appjenkins
-12:03:53  [2025-12-18T13:03:53.852803] End getting machine ID on Windows d446187aed1d9a7de7e9745b35c81394
-12:03:53  [2025-12-18T13:03:53.854805300] INFO: Machine ID: d446187aed1d9a7de7e9745b35c81394
-12:03:53  [2025-12-18T13:03:53.873805400] INFO: Your environment is compatible with the Katalon Runtime Engine NODE-LOCKED or FLOATING license. For a fixed machine ID, use a NODE-LOCKED license; for a dynamic machine ID, use a FLOATING license.
-12:03:53  [2025-12-18T13:03:53.876804400] 
-12:03:53  [2025-12-18T13:03:53.876804400] 
-12:03:53  [2025-12-18T13:03:53.897806] Activating...
-12:03:53  [2025-12-18T13:03:53.905807] Start activating offline...
-12:03:53  [2025-12-18T13:03:53.908808100] Search for valid offline licenses in folder: C:\Users\adgi5appjenkins\.katalon\license
-12:03:53  [2025-12-18T13:03:53.918807700] Start checking license: KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic
-[Pipeline] echo
-12:03:55  Suite PASSED: OPS_AFTER_REFRESH
-[Pipeline] }
-[Pipeline] // catchError
-12:03:54  [2025-12-18T13:03:54.308836400] KRE_Floating_d446187aed1d9a7de7e9745b35c81394_702971879.lic is valid.
-12:03:54  [2025-12-18T13:03:54.312835] The number of valid offline licenses: 1
-12:03:54  [2025-12-18T13:03:54.715864400] The number of Runtime Engine running sessions: 2
-12:03:54  [2025-12-18T13:03:54.718864500] License quota exceeded
-12:03:54  [2025-12-18T13:03:54.718864500] 
-12:03:54  [2025-12-18T13:03:54.718864500] Offline activation failed.
-12:03:54  [2025-12-18T13:03:54.718864500] Start activating online...
-12:03:55  [2025-12-18T13:03:55.062889400] java.lang.NumberFormatException: For input string: "java.net.UnknownHostException: analytics.katalon.com"
-12:03:55  [2025-12-18T13:03:55.062889400] 	at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at java.lang.Integer.parseInt(Integer.java:580)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at java.lang.Integer.parseInt(Integer.java:615)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at com.kms.katalon.integration.analytics.providers.TestOpsFeatureActivatorImpl.testConnection(TestOpsFeatureActivatorImpl.java:142)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at com.kms.katalon.execution.console.ConsoleMain.launch(ConsoleMain.java:316)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at com.kms.katalon.console.application.ConsoleApplicationStarter.start(ConsoleApplicationStarter.java:37)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at com.kms.katalon.application.Application.runConsole(Application.java:125)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at com.kms.katalon.application.Application.start(Application.java:88)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:203)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:137)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:107)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:401)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:255)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at java.lang.reflect.Method.invoke(Method.java:498)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:657)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:594)
-12:03:55  [2025-12-18T13:03:55.062889400] 	at org.eclipse.equinox.launcher.Main.run(Main.java:1447)
-12:03:55  [2025-12-18T13:03:55.062889400] 
-12:03:55  [2025-12-18T13:03:55.063889800] All launchers terminated
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] echo
-12:03:55  Suites failed (2): NATIXIS_PURCHASE_MODIFY, TS_COLLECTION_OTHERS
-[Pipeline] }
-[Pipeline] // script
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Declarative: Post Actions)
-[Pipeline] echo
-12:03:56  Pipeline completed
-[Pipeline] archiveArtifacts
-12:03:56  Archiving artifacts
-12:03:52  [2025-12-18T13:03:52.027674500] 2025-12-18 13:03:52.027 INFO  c.k.k.c.webui.common.WebUiCommonHelper   - Unable to find the element located by 'By.xpath: //table[@id='proxyActionBar_x_plhWorkflow']/tbody/tr/td/button'. Please recheck the objects properties to make sure the desired element is located. 
-12:03:52  [2025-12-18T13:03:52.028674500] 2025-12-18 13:03:52.028 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] Failed to find element with id 'Object Repository/purchase_request/buttonLaunchPRworkflow'. Try using Self-healing.
-12:03:52  [2025-12-18T13:03:52.083674400] 2025-12-18 13:03:52.079 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] The current locator of test object 'Object Repository/purchase_request/buttonLaunchPRworkflow' was broken. Propose an alternative one: '(.//*[normalize-space(text()) and normalize-space(.)='Save'])[2]/following::button[1]'.
-12:03:52  [2025-12-18T13:03:52.211683200] 2025-12-18 13:03:52.203 INFO  com.kms.katalon.core.util.KeywordUtil    - [STEP] [WARNING] StepFailedException on attempt 1. Retrying...
-12:03:52  [2025-12-18T13:03:52.212686200] 2025-12-18 13:03:52.202 ERROR c.k.k.core.keyword.internal.KeywordMain  - ❌ Unable to click on object 'Object Repository/purchase_request/buttonLaunchPRworkflow' (Root cause: com.kms.katalon.core.exception.StepFailedException: Unable to click on object 'Object Repository/purchase_request/buttonLaunchPRworkflow'
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.webui.keyword.internal.WebUIKeywordMain.stepFailed(WebUIKeywordMain.groovy:64)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.webui.keyword.internal.WebUIKeywordMain.runKeyword(WebUIKeywordMain.groovy:26)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.webui.keyword.builtin.ClickKeyword.click(ClickKeyword.groovy:75)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.webui.keyword.builtin.ClickKeyword.execute(ClickKeyword.groovy:42)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.keyword.internal.KeywordExecutor.executeKeywordForPlatform(KeywordExecutor.groovy:74)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.webui.keyword.WebUiBuiltInKeywords.click(WebUiBuiltInKeywords.groovy:620)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.webui.keyword.WebUiBuiltInKeywords$click$4.call(Unknown Source)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at utils.UIActions.click(UIActions.groovy:117)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at utils.UIActions.click(UIActions.groovy)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at utils.UIActions$click.call(Unknown Source)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at create_self_service_purchase_request.run(create_self_service_purchase_request:170)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.ScriptEngine.run(ScriptEngine.java:194)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.ScriptEngine.runScriptAsRawText(ScriptEngine.java:119)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseExecutor.runScript(TestCaseExecutor.java:430)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseExecutor.doExecute(TestCaseExecutor.java:421)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseExecutor.processExecutionPhase(TestCaseExecutor.java:400)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseExecutor.accessMainPhase(TestCaseExecutor.java:392)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseExecutor.execute(TestCaseExecutor.java:273)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestCaseMainPhase(TestSuiteExecutor.java:202)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestSuiteMainPhase(TestSuiteExecutor.java:164)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestSuiteExecutor.execute(TestSuiteExecutor.java:105)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseMain.startTestSuite(TestCaseMain.java:185)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.core.main.TestCaseMain$startTestSuite$0.call(Unknown Source)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at TempTestSuite1766058509144.run(TempTestSuite1766058509144.groovy:36)
-12:03:52  [2025-12-18T13:03:52.212686200] Caused by: org.openqa.selenium.ElementNotInteractableException: element not interactable
-12:03:52  [2025-12-18T13:03:52.212686200]   (Session info: chrome=143.0.7499.41)
-12:03:52  [2025-12-18T13:03:52.212686200] Build info: version: '3.141.59', revision: 'e82be7d358', time: '2018-11-14T08:25:53'
-12:03:52  [2025-12-18T13:03:52.212686200] System info: host: 'SWDCFRNXGI55817', ip: '100.85.227.83', os.name: 'Windows Server 2016', os.arch: 'amd64', os.version: '10.0', java.version: '1.8.0_282'
-12:03:52  [2025-12-18T13:03:52.212686200] Driver info: com.kms.katalon.selenium.driver.CChromeDriver
-12:03:52  [2025-12-18T13:03:52.212686200] Capabilities {acceptInsecureCerts: false, browserName: chrome, browserVersion: 143.0.7499.41, chrome: {chromedriverVersion: 143.0.7499.41 (09d0e08b6226..., userDataDir: C:\WINDOWS\SystemTemp\scope...}, fedcm:accounts: true, goog:chromeOptions: {debuggerAddress: localhost:61323}, goog:processID: 23256, javascriptEnabled: true, networkConnectionEnabled: false, pageLoadStrategy: normal, platform: WINDOWS, platformName: WINDOWS, proxy: Proxy(), setWindowRect: true, strictFileInteractability: false, timeouts: {implicit: 0, pageLoad: 300000, script: 30000}, unhandledPromptBehavior: dismiss and notify, webauthn:extension:credBlob: true, webauthn:extension:largeBlob: true, webauthn:extension:minPinLength: true, webauthn:extension:prf: true, webauthn:virtualAuthenticators: true}
-12:03:52  [2025-12-18T13:03:52.212686200] Session ID: 28a9421b81e67e96c6c29ea112036867
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.http.W3CHttpResponseCodec.createException(W3CHttpResponseCodec.java:187)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.http.W3CHttpResponseCodec.decode(W3CHttpResponseCodec.java:122)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.http.W3CHttpResponseCodec.decode(W3CHttpResponseCodec.java:49)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.HttpCommandExecutor.execute(HttpCommandExecutor.java:158)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.service.DriverCommandExecutor.execute(DriverCommandExecutor.java:83)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.RemoteWebDriver.execute(RemoteWebDriver.java:552)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.kms.katalon.selenium.driver.CChromeDriver.execute(CChromeDriver.java:19)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.RemoteWebElement.execute(RemoteWebElement.java:285)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.remote.RemoteWebElement.click(RemoteWebElement.java:84)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at org.openqa.selenium.support.events.EventFiringWebDriver$EventFiringWebElement.lambda$new$0(EventFiringWebDriver.java:404)
-12:03:52  [2025-12-18T13:03:52.212686200] 	at com.sun.proxy.$Proxy16.click(Unknown Source)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at org.openqa.selenium.support.events.EventFiringWebDriver$EventFiringWebElement.click(EventFiringWebDriver.java:417)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.builtin.ClickKeyword$_click_closure1.doCall(ClickKeyword.groovy:68)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.builtin.ClickKeyword$_click_closure1.call(ClickKeyword.groovy)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.internal.WebUIKeywordMain.runKeyword(WebUIKeywordMain.groovy:20)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.builtin.ClickKeyword.click(ClickKeyword.groovy:75)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.builtin.ClickKeyword.execute(ClickKeyword.groovy:42)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.keyword.internal.KeywordExecutor.executeKeywordForPlatform(KeywordExecutor.groovy:74)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.WebUiBuiltInKeywords.click(WebUiBuiltInKeywords.groovy:620)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at com.kms.katalon.core.webui.keyword.WebUiBuiltInKeywords$click$4.call(Unknown Source)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at utils.UIActions.click(UIActions.groovy:117)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at utils.UIActions.click(UIActions.groovy)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at utils.UIActions$click.call(Unknown Source)
-12:03:52  [2025-12-18T13:03:52.213685500] 	at Script1753052155103.run(Script1753052155103.groovy:170)
-12:03:52  [2025-12-18T13:03:52.213685500] 	... 13 more
-12:03:52  [2025-12-18T13:03:52.213685500] )
-12:03:52  [2025-12-18T13:03:52.712721400] 2025-12-18 13:03:52.705 INFO  com.kms.katalon.core.util.KeywordUtil    - [STEP] [INFO] Attempt 2 to click on object: purchase_request/buttonLaunchPRworkflow
-12:04:00  [2025-12-18T13:04:00.006979300] 
-12:04:00  [2025-12-18T13:04:00.006979300] --------------------------------------------------------------------------------
-12:04:00  [2025-12-18T13:04:00.006979300] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:04:00  [2025-12-18T13:04:00.006979300]  - 20251218_124829.....................................................3/19(16%)
-12:04:00  [2025-12-18T13:04:00.006979300] --------------------------------------------------------------------------------
-12:04:00  [2025-12-18T13:04:00.006979300] 
-12:04:13  [2025-12-18T13:04:13.716961200] 2025-12-18 13:04:13.715 INFO  c.k.k.c.webui.common.WebUiCommonHelper   - Unable to find the element located by 'By.xpath: //table[@id='proxyActionBar_x_plhWorkflow']/tbody/tr/td/button'. Please recheck the objects properties to make sure the desired element is located. 
-12:04:13  [2025-12-18T13:04:13.716961200] 2025-12-18 13:04:13.716 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] Failed to find element with id 'Object Repository/purchase_request/buttonLaunchPRworkflow'. Try using Self-healing.
-12:04:13  [2025-12-18T13:04:13.788968600] 2025-12-18 13:04:13.788 WARN  c.k.k.c.webui.common.WebUiCommonHelper   - [SELF-HEALING] The current locator of test object 'Object Repository/purchase_request/buttonLaunchPRworkflow' was broken. Propose an alternative one: '(.//*[normalize-space(text()) and normalize-space(.)='Save'])[2]/following::button[1]'.
-12:04:15  [2025-12-18T13:04:15.004127700] 
-12:04:15  [2025-12-18T13:04:15.004127700] --------------------------------------------------------------------------------
-12:04:15  [2025-12-18T13:04:15.004127700] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-12:04:15  [2025-12-18T13:04:15.004127700]  - 20251218_124829.....................................................3/19(16%)
-12:04:15  [2025-12-18T13:04:15.004127700] --------------------------------------------------------------------------------
-12:04:15  [2025-12-18T13:04:15.004127700] 
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] }
-[Pipeline] // timeout
-[Pipeline] }
-[Pipeline] // timestamps
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // node
-[Pipeline] End of Pipeline
-Finished: UNSTABLE
