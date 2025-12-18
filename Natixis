@@ -50,44 +50,41 @@ pipeline {
             [name: 'OPS_AFTER_REFRESH',          path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
-          def anyFailed = false
+          def anyFailed   = false
           def projectPath = "${env.WORKSPACE}\\${env.PROJECT_FILE}"
+          def katalonExe  = "${env.KATALON_HOME}\\katalonc.exe"
 
           for (def s : suites) {
             stage("Suite ${s.name}") {
               echo "Running suite: ${s.name}"
-              bat "if not exist \"Reports\\${s.name}\\${env.BUILD_NUMBER}\" mkdir \"Reports\\${s.name}\\${env.BUILD_NUMBER}\""
 
-              try {
-                executeKatalon(
-                  location: "${env.KATALON_HOME}",
-                  executeArgs:
-                    "-projectPath=\"${projectPath}\" " +
-                    "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-                    "-browserType=\"${env.BROWSER_TYPE}\" " +
-                    "-testSuitePath=\"${s.path}\" " +
-                    "-consoleLog " +
-                    "-reportFolder=\"Reports\\${s.name}\\${env.BUILD_NUMBER}\" " +
-                    "-reportFileName=\"${s.name}\"",
-                  version: '',
-                  x11Display: '',
-                  xvfbConfiguration: ''
-                )
+              def reportDir = "Reports\\${s.name}\\${env.BUILD_NUMBER}"
+              bat "if not exist \"${reportDir}\" mkdir \"${reportDir}\""
+
+              def cmd = "\"${katalonExe}\" " +
+                        "-noSplash -runMode=console " +
+                        "-projectPath=\"${projectPath}\" " +
+                        "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+                        "-browserType=\"${env.BROWSER_TYPE}\" " +
+                        "-testSuitePath=\"${s.path}\" " +
+                        "-consoleLog " +
+                        "-reportFolder=\"${reportDir}\" " +
+                        "-reportFileName=\"${s.name}\""
+
+              int exitCode = bat(returnStatus: true, script: cmd)
+
+              if (exitCode == 0) {
                 echo "Suite PASSED: ${s.name}"
-              } catch (err) {
+              } else {
                 anyFailed = true
                 currentBuild.result = 'UNSTABLE'
-                echo "Suite FAILED: ${s.name}"
-                echo "Error: ${err}"
+                echo "Suite FAILED: ${s.name} (exitCode=${exitCode})"
+                echo "Continuing to next suite..."
               }
             }
           }
 
-          if (anyFailed) {
-            echo "Pipeline finished with failures"
-          } else {
-            echo "Pipeline finished successfully"
-          }
+          echo anyFailed ? "Pipeline finished with failures" : "Pipeline finished successfully"
         }
       }
     }
@@ -100,174 +97,3 @@ pipeline {
     }
   }
 }
-
-
-
-16:30:11  [2025-12-17T17:30:11.658129600] --------------------------------------------------------------------------------
-16:30:11  [2025-12-17T17:30:11.658129600] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-16:30:11  [2025-12-17T17:30:11.658129600]  - 20251217_171225.....................................................4/19(21%)
-16:30:11  [2025-12-17T17:30:11.658129600] --------------------------------------------------------------------------------
-16:30:11  [2025-12-17T17:30:11.658129600] 
-16:30:18  [2025-12-17T17:30:18.976259500] 2025-12-17 17:30:18.975 INFO  com.kms.katalon.core.util.KeywordUtil    - ✅ Page and components loaded successfully.
-16:30:18  [2025-12-17T17:30:18.976259500] 2025-12-17 17:30:18.976 INFO  com.kms.katalon.core.util.KeywordUtil    - ⏳ Extra delay of 3 seconds to ensure UI stability.
-16:30:21  [2025-12-17T17:30:21.978468] 2025-12-17 17:30:21.977 DEBUG pproval_and_email_notification_approver1 - 31: screenshotPath = getReportFolder() + "/usernameValidation.png"
-16:30:21  [2025-12-17T17:30:21.978468] 2025-12-17 17:30:21.978 DEBUG pproval_and_email_notification_approver1 - 32: takeScreenshot(screenshotPath)
-16:30:22  [2025-12-17T17:30:22.079459700] 2025-12-17 17:30:22.078 DEBUG pproval_and_email_notification_approver1 - 33: if (elements.size() > 0)
-16:30:22  [2025-12-17T17:30:22.079459700] 2025-12-17 17:30:22.079 DEBUG pproval_and_email_notification_approver1 - 34: else
-16:30:22  [2025-12-17T17:30:22.079459700] 2025-12-17 17:30:22.079 DEBUG pproval_and_email_notification_approver1 - 1: markFailed(❌ Notification not sent to PR requester. Screenshot: $screenshotPath)
-16:30:22  [2025-12-17T17:30:22.079459700] 2025-12-17 17:30:22.079 ERROR com.kms.katalon.core.util.KeywordUtil    - ❌ ❌ Notification not sent to PR requester. Screenshot: D:\jenkins\work\workspace\GI5\P2P\p2p-tests\Reports\20251217_171224\NATIXIS_PURCHASE_ORDER\POs_approver_can_or_not_modify_suite\20251217_171225/usernameValidation.png
-16:30:22  [2025-12-17T17:30:22.080459700] 2025-12-17 17:30:22.080 ERROR c.k.katalon.core.main.TestCaseExecutor   - ❌ Test Cases/NATIXIS/purchase_request/validate_PR_approval_and_email_notification_approver1 FAILED.
-16:30:22  [2025-12-17T17:30:22.080459700] Reason:
-16:30:22  [2025-12-17T17:30:22.080459700] com.kms.katalon.core.exception.StepFailedException: ❌ Notification not sent to PR requester. Screenshot: D:\jenkins\work\workspace\GI5\P2P\p2p-tests\Reports\20251217_171224\NATIXIS_PURCHASE_ORDER\POs_approver_can_or_not_modify_suite\20251217_171225/usernameValidation.png
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.util.KeywordUtil.markFailed(KeywordUtil.java:19)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at validate_PR_approval_and_email_notification_approver1.run(validate_PR_approval_and_email_notification_approver1:111)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.ScriptEngine.run(ScriptEngine.java:194)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.ScriptEngine.runScriptAsRawText(ScriptEngine.java:119)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseExecutor.runScript(TestCaseExecutor.java:430)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseExecutor.doExecute(TestCaseExecutor.java:421)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseExecutor.processExecutionPhase(TestCaseExecutor.java:400)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseExecutor.accessMainPhase(TestCaseExecutor.java:392)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseExecutor.execute(TestCaseExecutor.java:273)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestCaseMainPhase(TestSuiteExecutor.java:202)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestSuiteMainPhase(TestSuiteExecutor.java:164)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestSuiteExecutor.execute(TestSuiteExecutor.java:105)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseMain.startTestSuite(TestCaseMain.java:185)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at com.kms.katalon.core.main.TestCaseMain$startTestSuite$0.call(Unknown Source)
-16:30:22  [2025-12-17T17:30:22.080459700] 	at TempTestSuite1765987945921.run(TempTestSuite1765987945921.groovy:36)
-16:30:22  [2025-12-17T17:30:22.080459700] 
-16:30:22  [2025-12-17T17:30:22.081459700] 2025-12-17 17:30:22.081 INFO  com.kms.katalon.core.util.KeywordUtil    - [validate_PR_approval_and_email_notification_approver1] ❌ FAILED
-16:30:22  [2025-12-17T17:30:22.177467400] 2025-12-17 17:30:22.170 INFO  com.kms.katalon.core.util.KeywordUtil    - 🖥 Viewport (effective): 1040 x 784
-16:30:23  [2025-12-17T17:30:23.777567800] 2025-12-17 17:30:23.777 INFO  c.k.katalon.core.main.TestCaseExecutor   - END Test Cases/NATIXIS/purchase_request/validate_PR_approval_and_email_notification_approver1
-16:30:23  [2025-12-17T17:30:23.781568600] 2025-12-17 17:30:23.781 INFO  c.k.katalon.core.main.TestCaseExecutor   - --------------------
-16:30:23  [2025-12-17T17:30:23.781568600] 2025-12-17 17:30:23.781 INFO  c.k.katalon.core.main.TestCaseExecutor   - START Test Cases/NATIXIS/purchase_order/can_modify_PO/PR Preparer can modify purchase order
-16:30:23  [2025-12-17T17:30:23.788570200] 2025-12-17 17:30:23.787 INFO  com.kms.katalon.core.util.KeywordUtil    - ▶️ Start Test Case: Test Cases/NATIXIS/purchase_order/can_modify_PO/PR Preparer can modify purchase order
-16:30:23  [2025-12-17T17:30:23.796571500] 2025-12-17 17:30:23.796 INFO  c.k.k.core.webui.driver.DriverFactory    - Starting 'Chrome' driver
-16:30:23  [2025-12-17T17:30:23.798571100] 2025-12-17 17:30:23.798 INFO  c.k.k.core.webui.driver.DriverFactory    - Action delay is set to 0 milliseconds
-16:30:23  [2025-12-17T17:30:23.799571900] dez 17, 2025 5:30:23 PM org.openqa.selenium.remote.DesiredCapabilities chrome
-16:30:23  [2025-12-17T17:30:23.799571900] INFO: Using `new ChromeOptions()` is preferred to `DesiredCapabilities.chrome()`
-16:30:23  [2025-12-17T17:30:23.886575400] Starting ChromeDriver 143.0.7499.41 (09d0e08b622603fde13600b061231d0f1e54957e-refs/branch-heads/7499@{#2389}) on port 24108
-16:30:23  [2025-12-17T17:30:23.886575400] Only local connections are allowed.
-16:30:23  [2025-12-17T17:30:23.886575400] Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.
-16:30:23  [2025-12-17T17:30:23.896573400] ChromeDriver was started successfully on port 24108.
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] }
-[Pipeline] // timeout
-[Pipeline] }
-[Pipeline] // timestamps
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // node
-[Pipeline] End of Pipeline
-16:30:25  [2025-12-17T17:30:25.404674600] dez 17, 2025 5:30:25 PM org.openqa.selenium.remote.ProtocolHandshake createSession
-16:30:25  [2025-12-17T17:30:25.404674600] INFO: Detected dialect: W3C
-16:30:25  [2025-12-17T17:30:25.434676200] 2025-12-17 17:30:25.434 INFO  c.k.k.core.webui.driver.DriverFactory    - sessionId = 1a8e0b4ef9b663f2834ff0718efcbb87
-16:30:25  [2025-12-17T17:30:25.520680100] 2025-12-17 17:30:25.519 INFO  c.k.k.core.webui.driver.DriverFactory    - browser = Chrome 143.0.0.0
-16:30:25  [2025-12-17T17:30:25.520680100] 2025-12-17 17:30:25.520 INFO  c.k.k.core.webui.driver.DriverFactory    - platform = Windows Server 2016
-16:30:25  [2025-12-17T17:30:25.520680100] 2025-12-17 17:30:25.520 INFO  c.k.k.core.webui.driver.DriverFactory    - seleniumVersion = 3.141.59
-16:30:25  [2025-12-17T17:30:25.521680900] 2025-12-17 17:30:25.520 INFO  c.k.k.core.webui.driver.DriverFactory    - proxyInformation = ProxyInformation { proxyOption=NO_PROXY, proxyServerType=HTTP, username=, password=********, proxyServerAddress=, proxyServerPort=0, executionList="", isApplyToDesiredCapabilities=true }
-16:30:25  [2025-12-17T17:30:25.755698200] 2025-12-17 17:30:25.755 INFO  com.kms.katalon.core.util.KeywordUtil    - ⚠️ Viewport apply fallback (maximize): No such property: VIEWPORT_WIDTH for class: internal.GlobalVariable
-16:30:26  [2025-12-17T17:30:26.658749200] 
-16:30:26  [2025-12-17T17:30:26.658749200] --------------------------------------------------------------------------------
-16:30:26  [2025-12-17T17:30:26.658749200] Test Suites/NATIXIS_PURCHASE_ORDER/POs_approver_can_or_not_modify_suite - Chrome
-16:30:26  [2025-12-17T17:30:26.658749200]  - 20251217_171225.....................................................5/19(26%)
-16:30:26  [2025-12-17T17:30:26.658749200] --------------------------------------------------------------------------------
-16:30:26  [2025-12-17T17:30:26.658749200] 
-16:30:27  [2025-12-17T17:30:27.201784600] 2025-12-17 17:30:27.200 ERROR c.k.katalon.core.main.TestCaseExecutor   - ❌ Test Cases/NATIXIS/purchase_order/can_modify_PO/PR Preparer can modify purchase order FAILED.
-16:30:27  [2025-12-17T17:30:27.201784600] Reason:
-16:30:27  [2025-12-17T17:30:27.201784600] org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:
-16:30:27  [2025-12-17T17:30:27.201784600] file:/D:/jenkins/work/workspace/GI5/P2P/p2p-tests/Scripts/NATIXIS/purchase_order/can_modify_PO/PR%20Preparer%20can%20modify%20purchase%20order/Script1749458918256.groovy: 14: unable to resolve class testCaseMethods.TestCaseMethods
-16:30:27  [2025-12-17T17:30:27.201784600]  @ line 14, column 1.
-16:30:27  [2025-12-17T17:30:27.201784600]    import testCaseMethods.TestCaseMethods
-16:30:27  [2025-12-17T17:30:27.201784600]    ^
-16:30:27  [2025-12-17T17:30:27.201784600] 
-16:30:27  [2025-12-17T17:30:27.201784600] 1 error
-16:30:27  [2025-12-17T17:30:27.201784600] 
-16:30:27  [2025-12-17T17:30:27.201784600] 	at com.kms.katalon.core.main.ScriptEngine.getScript(ScriptEngine.java:199)
-16:30:27  [2025-12-17T17:30:27.201784600] 	at com.kms.katalon.core.main.ScriptEngine.run(ScriptEngine.java:194)
-16:30:27  [2025-12-17T17:30:27.201784600] 	at com.kms.katalon.core.main.ScriptEngine.runScriptAsRawText(ScriptEngine.java:119)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseExecutor.runScript(TestCaseExecutor.java:430)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseExecutor.doExecute(TestCaseExecutor.java:421)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseExecutor.processExecutionPhase(TestCaseExecutor.java:400)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseExecutor.accessMainPhase(TestCaseExecutor.java:392)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseExecutor.execute(TestCaseExecutor.java:273)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestCaseMainPhase(TestSuiteExecutor.java:202)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestSuiteMainPhase(TestSuiteExecutor.java:164)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestSuiteExecutor.execute(TestSuiteExecutor.java:105)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseMain.startTestSuite(TestCaseMain.java:185)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at com.kms.katalon.core.main.TestCaseMain$startTestSuite$0.call(Unknown Source)
-16:30:27  [2025-12-17T17:30:27.202783200] 	at TempTestSuite1765987945921.run(TempTestSuite1765987945921.groovy:36)
-16:30:27  [2025-12-17T17:30:27.202783200] 
-16:30:27  [2025-12-17T17:30:27.203784300] 2025-12-17 17:30:27.203 INFO  com.kms.katalon.core.util.KeywordUtil    - [PR Preparer can modify purchase order] ⚠️ ERROR
-16:30:27  [2025-12-17T17:30:27.420800600] 2025-12-17 17:30:27.417 INFO  com.kms.katalon.core.util.KeywordUtil    - 🖥 Viewport (effective): 1040 x 784
-16:30:28  [2025-12-17T17:30:28.793882600] 2025-12-17 17:30:28.793 INFO  c.k.katalon.core.main.TestCaseExecutor   - END Test Cases/NATIXIS/purchase_order/can_modify_PO/PR Preparer can modify purchase order
-16:30:28  [2025-12-17T17:30:28.799882400] 2025-12-17 17:30:28.799 INFO  c.k.katalon.core.main.TestCaseExecutor   - --------------------
-16:30:28  [2025-12-17T17:30:28.799882400] 2025-12-17 17:30:28.799 INFO  c.k.katalon.core.main.TestCaseExecutor   - START Test Cases/NATIXIS/purchase_order/can_modify_PO/Business Support can modify purchase order
-16:30:28  [2025-12-17T17:30:28.811883700] 2025-12-17 17:30:28.811 INFO  com.kms.katalon.core.util.KeywordUtil    - ▶️ Start Test Case: Test Cases/NATIXIS/purchase_order/can_modify_PO/Business Support can modify purchase order
-16:30:28  [2025-12-17T17:30:28.817883800] 2025-12-17 17:30:28.817 INFO  c.k.k.core.webui.driver.DriverFactory    - Starting 'Chrome' driver
-16:30:28  [2025-12-17T17:30:28.818885300] 2025-12-17 17:30:28.818 INFO  c.k.k.core.webui.driver.DriverFactory    - Action delay is set to 0 milliseconds
-16:30:28  [2025-12-17T17:30:28.820885] dez 17, 2025 5:30:28 PM org.openqa.selenium.remote.DesiredCapabilities chrome
-16:30:28  [2025-12-17T17:30:28.820885] INFO: Using `new ChromeOptions()` is preferred to `DesiredCapabilities.chrome()`
-16:30:28  [2025-12-17T17:30:28.895893400] Starting ChromeDriver 143.0.7499.41 (09d0e08b622603fde13600b061231d0f1e54957e-refs/branch-heads/7499@{#2389}) on port 17846
-16:30:28  [2025-12-17T17:30:28.895893400] Only local connections are allowed.
-16:30:28  [2025-12-17T17:30:28.895893400] Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.
-16:30:28  [2025-12-17T17:30:28.906893300] ChromeDriver was started successfully on port 17846.
-16:30:30  [2025-12-17T17:30:30.196973700] dez 17, 2025 5:30:30 PM org.openqa.selenium.remote.ProtocolHandshake createSession
-16:30:30  [2025-12-17T17:30:30.197973300] INFO: Detected dialect: W3C
-16:30:30  [2025-12-17T17:30:30.215974800] 2025-12-17 17:30:30.215 INFO  c.k.k.core.webui.driver.DriverFactory    - sessionId = 51e7ff5a51090dca435231be81e4bfd1
-16:30:30  [2025-12-17T17:30:30.234975900] 2025-12-17 17:30:30.234 INFO  c.k.k.core.webui.driver.DriverFactory    - browser = Chrome 143.0.0.0
-16:30:30  [2025-12-17T17:30:30.235978100] 2025-12-17 17:30:30.234 INFO  c.k.k.core.webui.driver.DriverFactory    - platform = Windows Server 2016
-16:30:30  [2025-12-17T17:30:30.235978100] 2025-12-17 17:30:30.235 INFO  c.k.k.core.webui.driver.DriverFactory    - seleniumVersion = 3.141.59
-16:30:30  [2025-12-17T17:30:30.235978100] 2025-12-17 17:30:30.235 INFO  c.k.k.core.webui.driver.DriverFactory    - proxyInformation = ProxyInformation { proxyOption=NO_PROXY, proxyServerType=HTTP, username=, password=********, proxyServerAddress=, proxyServerPort=0, executionList="", isApplyToDesiredCapabilities=true }
-16:30:30  [2025-12-17T17:30:30.279977900] 2025-12-17 17:30:30.277 INFO  com.kms.katalon.core.util.KeywordUtil    - ⚠️ Viewport apply fallback (maximize): No such property: VIEWPORT_WIDTH for class: internal.GlobalVariable
-16:30:31  [2025-12-17T17:30:31.412057400] 2025-12-17 17:30:31.412 ERROR c.k.katalon.core.main.TestCaseExecutor   - ❌ Test Cases/NATIXIS/purchase_order/can_modify_PO/Business Support can modify purchase order FAILED.
-16:30:31  [2025-12-17T17:30:31.412057400] Reason:
-16:30:31  [2025-12-17T17:30:31.412057400] org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:
-16:30:31  [2025-12-17T17:30:31.412057400] file:/D:/jenkins/work/workspace/GI5/P2P/p2p-tests/Scripts/NATIXIS/purchase_order/can_modify_PO/Business%20Support%20can%20modify%20purchase%20order/Script1749458918250.groovy: 14: unable to resolve class testCaseMethods.TestCaseMethods
-16:30:31  [2025-12-17T17:30:31.412057400]  @ line 14, column 1.
-16:30:31  [2025-12-17T17:30:31.412057400]    import testCaseMethods.TestCaseMethods
-16:30:31  [2025-12-17T17:30:31.412057400]    ^
-16:30:31  [2025-12-17T17:30:31.412057400] 
-16:30:31  [2025-12-17T17:30:31.412057400] 1 error
-16:30:31  [2025-12-17T17:30:31.412057400] 
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.ScriptEngine.getScript(ScriptEngine.java:199)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.ScriptEngine.run(ScriptEngine.java:194)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.ScriptEngine.runScriptAsRawText(ScriptEngine.java:119)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseExecutor.runScript(TestCaseExecutor.java:430)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseExecutor.doExecute(TestCaseExecutor.java:421)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseExecutor.processExecutionPhase(TestCaseExecutor.java:400)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseExecutor.accessMainPhase(TestCaseExecutor.java:392)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseExecutor.execute(TestCaseExecutor.java:273)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestCaseMainPhase(TestSuiteExecutor.java:202)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestSuiteExecutor.accessTestSuiteMainPhase(TestSuiteExecutor.java:164)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestSuiteExecutor.execute(TestSuiteExecutor.java:105)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseMain.startTestSuite(TestCaseMain.java:185)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at com.kms.katalon.core.main.TestCaseMain$startTestSuite$0.call(Unknown Source)
-16:30:31  [2025-12-17T17:30:31.412057400] 	at TempTestSuite1765987945921.run(TempTestSuite1765987945921.groovy:36)
-16:30:31  [2025-12-17T17:30:31.412057400] 
-16:30:31  [2025-12-17T17:30:31.414056] 2025-12-17 17:30:31.414 INFO  com.kms.katalon.core.util.KeywordUtil    - [Business Support can modify purchase order] ⚠️ ERROR
-16:30:31  [2025-12-17T17:30:31.607077300] 2025-12-17 17:30:31.607 INFO  com.kms.katalon.core.util.KeywordUtil    - 🖥 Viewport (effective): 1040 x 784
-16:30:32  [2025-12-17T17:30:32.801859] 2025-12-17 17:30:32.801 INFO  c.k.katalon.core.main.TestCaseExecutor   - END Test Cases/NATIXIS/purchase_order/can_modify_PO/Business Support can modify purchase order
-16:30:32  [2025-12-17T17:30:32.804855700] 2025-12-17 17:30:32.804 INFO  c.k.katalon.core.main.TestCaseExecutor   - --------------------
-16:30:32  [2025-12-17T17:30:32.804855700] 2025-12-17 17:30:32.804 INFO  c.k.katalon.core.main.TestCaseExecutor   - START Test Cases/NATIXIS/purchase_order/can_modify_PO/PR Requester can modify Orders of his perimeter
-16:30:32  [2025-12-17T17:30:32.814860300] 2025-12-17 17:30:32.814 INFO  com.kms.katalon.core.util.KeywordUtil    - ▶️ Start Test Case: Test Cases/NATIXIS/purchase_order/can_modify_PO/PR Requester can modify Orders of his perimeter
-16:30:32  [2025-12-17T17:30:32.819854500] 2025-12-17 17:30:32.819 INFO  c.k.k.core.webui.driver.DriverFactory    - Starting 'Chrome' driver
-16:30:32  [2025-12-17T17:30:32.819854500] dez 17, 2025 5:30:32 PM org.openqa.selenium.remote.DesiredCapabilities chrome
-16:30:32  [2025-12-17T17:30:32.819854500] INFO: Using `new ChromeOptions()` is preferred to `DesiredCapabilities.chrome()`
-16:30:32  [2025-12-17T17:30:32.820953200] 2025-12-17 17:30:32.819 INFO  c.k.k.core.webui.driver.DriverFactory    - Action delay is set to 0 milliseconds
-16:30:32  [2025-12-17T17:30:32.898851300] Starting ChromeDriver 143.0.7499.41 (09d0e08b622603fde13600b061231d0f1e54957e-refs/branch-heads/7499@{#2389}) on port 43453
-16:30:32  [2025-12-17T17:30:32.898851300] Only local connections are allowed.
-16:30:32  [2025-12-17T17:30:32.898851300] Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.
-16:30:32  [2025-12-17T17:30:32.909847900] ChromeDriver was started successfully on port 43453.
-16:30:34  [2025-12-17T17:30:34.034166400] dez 17, 2025 5:30:34 PM org.openqa.selenium.remote.ProtocolHandshake createSession
-16:30:34  [2025-12-17T17:30:34.034166400] INFO: Detected dialect: W3C
-16:30:34  [2025-12-17T17:30:34.041163900] 2025-12-17 17:30:34.040 INFO  c.k.k.core.webui.driver.DriverFactory    - sessionId = aca6f389d701b893ae31b5413080ac62
-16:30:34  [2025-12-17T17:30:34.052168100] 2025-12-17 17:30:34.052 INFO  c.k.k.core.webui.driver.DriverFactory    - browser = Chrome 143.0.0.0
-16:30:34  [2025-12-17T17:30:34.052168100] 2025-12-17 17:30:34.052 INFO  c.k.k.core.webui.driver.DriverFactory    - platform = Windows Server 2016
-16:30:34  [2025-12-17T17:30:34.052168100] 2025-12-17 17:30:34.052 INFO  c.k.k.core.webui.driver.DriverFactory    - seleniumVersion = 3.141.59
-16:30:34  [2025-12-17T17:30:34.053167400] 2025-12-17 17:30:34.053 INFO  c.k.k.core.webui.driver.DriverFactory    - proxyInformation = ProxyInformation { proxyOption=NO_PROXY, proxyServerType=HTTP, username=, password=********, proxyServerAddress=, proxyServerPort=0, executionList="", isApplyToDesiredCapabilities=true }
-16:30:34  [2025-12-17T17:30:34.127170500] 2025-12-17 17:30:34.126 INFO  com.kms.katalon.core.util.KeywordUtil    - ⚠️ Viewport apply fallback (maximize): No such property: VIEWPORT_WIDTH for class: internal.GlobalVariable
-Finished: UNSTABLE
