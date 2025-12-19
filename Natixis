@@ -1,108 +1,3 @@
-import groovy.transform.Field
-import groovy.transform.NonCPS
-
-import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Node
-import org.w3c.dom.NodeList
-
-@Field List<Map> SUITE_RESULTS = []
-
-@NonCPS
-String short50(String txt) {
-  if (txt == null) return ''
-  String oneLine = txt.replace('\r', '\n')
-                      .split('\n')
-                      .collect { it?.trim() }
-                      .findAll { it }
-                      .join(' ')
-                      .trim()
-  if (!oneLine) return ''
-  return (oneLine.length() > 50) ? oneLine.substring(0, 50) : oneLine
-}
-
-@NonCPS
-String escapeHtml(String s) {
-  if (s == null) return ''
-  return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-}
-
-@NonCPS
-Map parseJUnitXmlText(String xmlText) {
-  Map out = [
-    total: 0, passed: 0, failed: 0, skipped: 0,
-    cases: [],
-    firstFailMsg: ''
-  ]
-  if (!xmlText?.trim()) return out
-
-  try {
-    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance()
-    dbf.setNamespaceAware(false)
-
-    try { dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) } catch (ignore) {}
-    try { dbf.setFeature("http://xml.org/sax/features/external-general-entities", false) } catch (ignore) {}
-    try { dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false) } catch (ignore) {}
-
-    def doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xmlText.getBytes("UTF-8")))
-    doc.getDocumentElement().normalize()
-
-    NodeList testcases = doc.getElementsByTagName("testcase")
-
-    for (int i = 0; i < testcases.getLength(); i++) {
-      Node tc = testcases.item(i)
-      if (tc.getNodeType() != Node.ELEMENT_NODE) continue
-
-      def elem = (org.w3c.dom.Element) tc
-
-      String classname = elem.getAttribute("classname") ?: ''
-      String nameAttr  = elem.getAttribute("name") ?: ''
-
-      String displayName
-      if (classname?.startsWith("Test Cases/")) displayName = classname
-      else if (nameAttr?.startsWith("Test Cases/")) displayName = nameAttr
-      else if (classname && nameAttr) displayName = "${classname} - ${nameAttr}"
-      else displayName = (nameAttr ?: classname ?: "unknown_test_case")
-
-      NodeList skippedNodes = elem.getElementsByTagName("skipped")
-      NodeList failureNodes = elem.getElementsByTagName("failure")
-      NodeList errorNodes   = elem.getElementsByTagName("error")
-
-      boolean isSkipped = skippedNodes != null && skippedNodes.getLength() > 0
-      boolean isFailed  = (failureNodes != null && failureNodes.getLength() > 0) || (errorNodes != null && errorNodes.getLength() > 0)
-
-      String status = "PASSED"
-      if (isSkipped) status = "SKIPPED"
-      if (isFailed)  status = "FAILED"
-
-      String failMsg = ""
-      if (status == "FAILED") {
-        Node n = null
-        if (failureNodes != null && failureNodes.getLength() > 0) n = failureNodes.item(0)
-        else if (errorNodes != null && errorNodes.getLength() > 0) n = errorNodes.item(0)
-
-        if (n != null && n.getNodeType() == Node.ELEMENT_NODE) {
-          def e = (org.w3c.dom.Element) n
-          String m = e.getAttribute("message")
-          if (!m) m = e.getTextContent()
-          failMsg = short50(m)
-          if (!out.firstFailMsg && failMsg) out.firstFailMsg = failMsg
-        }
-      }
-
-      out.cases << [name: displayName, status: status, failMsg: failMsg]
-      out.total++
-
-      if (status == "SKIPPED") out.skipped++
-      if (status == "FAILED")  out.failed++
-    }
-
-    out.passed = Math.max(0, out.total - out.failed - out.skipped)
-    return out
-  } catch (Throwable ignore) {
-    return out
-  }
-}
-
 pipeline {
   agent { label 'GI5_SWDCFRNXGI55817' }
 
@@ -124,11 +19,12 @@ pipeline {
     stage('Prepare Reports') {
       steps {
         script {
-          SUITE_RESULTS = []
           bat """
             if exist "Reports" rmdir /s /q "Reports"
             mkdir "Reports"
+            mkdir "Reports\\_jenkins_summary"
           """
+          writeFile file: "Reports\\_jenkins_summary\\build_description.txt", text: ""
         }
       }
     }
@@ -171,59 +67,9 @@ pipeline {
 
           def projectPath = "${env.WORKSPACE}\\${env.PROJECT_FILE}"
 
-          def listXmlRelatives = { String dir ->
-            def ps = """
-              \$ErrorActionPreference = 'SilentlyContinue'
-              \$root = (Get-Location).Path
-              if (!(Test-Path '${dir}')) { return }
-              Get-ChildItem -Path '${dir}' -Recurse -Filter '*.xml' | ForEach-Object {
-                \$full = \$_.FullName
-                if (\$full.StartsWith(\$root)) { \$full.Substring(\$root.Length + 1) } else { \$full }
-              }
-            """
-            def out = powershell(returnStdout: true, script: ps).trim()
-            if (!out) return []
-            return out.split('\n').collect { it.trim() }.findAll { it }
-          }
-
-          def collectSuiteFromDir = { String reportDir ->
-            def files = listXmlRelatives(reportDir)
-
-            def agg = [total: 0, passed: 0, failed: 0, skipped: 0, cases: [], firstFailMsg: '']
-
-            files.each { f ->
-              def xmlText = ''
-              try { xmlText = readFile(file: f) } catch (ignore) { xmlText = '' }
-
-              def p = parseJUnitXmlText(xmlText)
-              if (p.total > 0) {
-                agg.total   += p.total
-                agg.passed  += p.passed
-                agg.failed  += p.failed
-                agg.skipped += p.skipped
-                agg.cases.addAll(p.cases)
-                if (!agg.firstFailMsg && p.firstFailMsg) agg.firstFailMsg = p.firstFailMsg
-              }
-            }
-
-            def seen = [:]
-            def dedup = []
-            agg.cases.each { c ->
-              if (!seen.containsKey(c.name)) {
-                seen[c.name] = true
-                dedup << c
-              }
-            }
-            agg.cases = dedup
-
-            return agg
-          }
-
           for (def s : suites) {
 
             stage("Suite ${s.name}") {
-
-              echo "Running suite: ${s.name}"
 
               def reportDir = "${env.WORKSPACE}\\Reports\\${s.name}\\${env.BUILD_NUMBER}"
               bat "if not exist \"${reportDir}\" mkdir \"${reportDir}\""
@@ -232,14 +78,14 @@ pipeline {
               def lockFile       = "${lockDir}\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
               def staleLockHours = 12
 
-              def suiteStatus  = 'UNKNOWN'
-              def suiteErrText = ''
+              def katalonThrew = false
+              def katalonErr50 = ""
 
               catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-
                 try {
                   timeout(time: 110, unit: 'MINUTES') {
 
+                    // Lock (one Katalon at a time) + stale lock recovery
                     powershell """
                       \$ErrorActionPreference = 'Stop'
                       if (!(Test-Path '${lockDir}')) { New-Item -ItemType Directory -Path '${lockDir}' | Out-Null }
@@ -269,6 +115,7 @@ pipeline {
                       }
                     """
 
+                    // Pre-clean: only processes tied to THIS project
                     powershell """
                       \$ErrorActionPreference = 'SilentlyContinue'
                       \$proj = '${projectPath}'
@@ -295,162 +142,152 @@ pipeline {
                       if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
                     """
 
-                    def attempt = 1
-                    def maxAttempts = 2
-                    def lastErrText = ''
-
-                    while (attempt <= maxAttempts) {
-
-                      boolean katalonThrew = false
-
-                      try {
-                        echo "Katalon attempt ${attempt}/${maxAttempts} for suite ${s.name}"
-
-                        executeKatalon(
-                          location: "${env.KATALON_HOME}",
-                          executeArgs:
-                            "-projectPath=\"${projectPath}\" " +
-                            "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
-                            "-browserType=\"${env.BROWSER_TYPE}\" " +
-                            "-testSuitePath=\"${s.path}\" " +
-                            "-consoleLog " +
-                            "-reportFolder=\"${reportDir}\" " +
-                            "-reportFileName=\"${s.name}\"",
-                          version: '',
-                          x11Display: '',
-                          xvfbConfiguration: ''
-                        )
-
-                      } catch (err) {
-                        katalonThrew = true
-                        lastErrText = "${err}"
-                      }
-
-                      def parsedNow = collectSuiteFromDir(reportDir)
-
-                      if (parsedNow.total > 0) {
-                        suiteStatus = (parsedNow.failed > 0) ? 'FAILED' : 'PASSED'
-                        suiteErrText = (suiteStatus == 'FAILED') ? (parsedNow.firstFailMsg ?: "One or more test cases failed") : ''
-                        break
-                      }
-
-                      if (!katalonThrew) {
-                        suiteStatus = 'PASSED'
-                        break
-                      }
-
-                      def errLower = (lastErrText ?: '').toLowerCase()
-                      def isInfra =
-                        errLower.contains('sessionnotcreated') ||
-                        errLower.contains('chrome failed to start') ||
-                        errLower.contains('unable to create new service') ||
-                        errLower.contains('timed out') ||
-                        errLower.contains('timeout') ||
-                        errLower.contains('connection refused') ||
-                        errLower.contains('disconnected') ||
-                        errLower.contains('cannot find chrome binary') ||
-                        errLower.contains('webdriver') ||
-                        errLower.contains('sockettimeoutexception') ||
-                        errLower.contains('katalon engine has stopped') ||
-                        errLower.contains('process unexpectedly closed')
-
-                      echo "Suite error on attempt ${attempt}: ${lastErrText}"
-
-                      powershell """
-                        \$ErrorActionPreference = 'SilentlyContinue'
-                        \$proj = '${projectPath}'
-                        \$all  = Get-CimInstance Win32_Process
-
-                        \$katalon = \$all | Where-Object {
-                          (\$_.Name -match 'katalon|katalonc|java') -and (\$_.CommandLine -like "*\$proj*")
-                        }
-                        \$katalonPids = @(\$katalon | Select-Object -ExpandProperty ProcessId)
-
-                        \$drivers = \$all | Where-Object {
-                          (\$_.Name -in @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')) -and (\$katalonPids -contains \$_.ParentProcessId)
-                        }
-                        \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
-
-                        \$browsers = \$all | Where-Object {
-                          (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and (
-                            (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId)
-                          )
-                        }
-
-                        if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
-                        if (\$drivers)  { \$drivers  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
-                        if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
-                      """
-
-                      if (isInfra && attempt < maxAttempts) {
-                        echo "Infra-like failure detected, retrying suite ${s.name}"
-                        attempt++
-                        sleep(time: 10, unit: 'SECONDS')
-                        continue
-                      }
-
-                      suiteStatus = 'FAILED'
-                      suiteErrText = short50(lastErrText)
-                      break
+                    // Run Katalon
+                    try {
+                      executeKatalon(
+                        location: "${env.KATALON_HOME}",
+                        executeArgs:
+                          "-projectPath=\"${projectPath}\" " +
+                          "-executionProfile=\"${env.EXECUTION_PROFILE}\" " +
+                          "-browserType=\"${env.BROWSER_TYPE}\" " +
+                          "-testSuitePath=\"${s.path}\" " +
+                          "-consoleLog " +
+                          "-reportFolder=\"${reportDir}\" " +
+                          "-reportFileName=\"${s.name}\"",
+                        version: '',
+                        x11Display: '',
+                        xvfbConfiguration: ''
+                      )
+                    } catch (err) {
+                      katalonThrew = true
+                      def t = "${err}".replace("\r", "\n").split("\n")[0]?.trim()
+                      if (t == null) t = "${err}"
+                      t = t.replaceAll("\\s+", " ").trim()
+                      if (t.length() > 50) t = t.substring(0, 50)
+                      katalonErr50 = t
                     }
 
-                    if (suiteStatus == 'FAILED') {
-                      error("Suite FAILED: ${s.name}")
-                    }
                   }
-
                 } finally {
 
-                  def parsedFinal = collectSuiteFromDir(reportDir)
-
-                  if (parsedFinal.total > 0) {
-                    suiteStatus = (parsedFinal.failed > 0) ? 'FAILED' : 'PASSED'
-                    if (suiteStatus == 'FAILED') suiteErrText = parsedFinal.firstFailMsg ?: suiteErrText
-                  } else {
-                    if (suiteStatus == 'UNKNOWN') suiteStatus = 'FAILED'
-                  }
-
-                  SUITE_RESULTS << [
-                    suite   : s.name,
-                    path    : s.path,
-                    status  : suiteStatus,
-                    total   : parsedFinal.total,
-                    passed  : parsedFinal.passed,
-                    failed  : parsedFinal.failed,
-                    skipped : parsedFinal.skipped,
-                    cases   : parsedFinal.cases,
-                    failMsg : short50(suiteErrText)
-                  ]
+                  // Build suite summary from JUnit XML (PowerShell only)
+                  def threwVal = katalonThrew ? "1" : "0"
+                  def errVal   = (katalonErr50 ?: "").replace("'", "''")
 
                   powershell """
                     \$ErrorActionPreference = 'SilentlyContinue'
-                    \$proj  = '${projectPath}'
-                    \$suite = '${s.path}'
-                    \$all   = Get-CimInstance Win32_Process
 
-                    \$katalon = \$all | Where-Object {
-                      (\$_.Name -match 'katalon|katalonc|java') -and
-                      (\$_.CommandLine -like "*\$proj*") -and
-                      (\$_.CommandLine -like "*\$suite*")
-                    }
-                    \$katalonPids = @(\$katalon | Select-Object -ExpandProperty ProcessId)
+                    \$reportDir  = '${reportDir}'
+                    \$suiteName  = '${s.name}'
+                    \$threw      = ${threwVal}
+                    \$fallback50 = '${errVal}'
+                    \$globalFile = '${env.WORKSPACE}\\\\Reports\\\\_jenkins_summary\\\\build_description.txt'
 
-                    \$drivers = \$all | Where-Object {
-                      (\$_.Name -in @('chromedriver.exe','msedgedriver.exe','geckodriver.exe')) -and (\$katalonPids -contains \$_.ParentProcessId)
-                    }
-                    \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
-
-                    \$browsers = \$all | Where-Object {
-                      (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and (
-                        (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId)
-                      )
+                    function Short50([string]\$x) {
+                      if ([string]::IsNullOrWhiteSpace(\$x)) { return "" }
+                      \$t = (\$x -replace '\\s+', ' ').Trim()
+                      if (\$t.Length -gt 50) { return \$t.Substring(0,50) }
+                      return \$t
                     }
 
-                    if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
-                    if (\$drivers)  { \$drivers  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
-                    if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
+                    if (!(Test-Path (Split-Path \$globalFile))) {
+                      New-Item -ItemType Directory -Path (Split-Path \$globalFile) -Force | Out-Null
+                    }
+
+                    \$xmlFiles = Get-ChildItem -Path \$reportDir -Recurse -Filter '*.xml' -ErrorAction SilentlyContinue
+
+                    \$cases = @()
+                    \$firstFail = ""
+
+                    foreach (\$f in \$xmlFiles) {
+                      try { [xml]\$x = Get-Content -Raw -Path \$f.FullName } catch { continue }
+
+                      \$tcs = \$x.SelectNodes('//testcase')
+                      if (\$tcs -eq \$null) { continue }
+
+                      foreach (\$tc in \$tcs) {
+                        \$cn = [string]\$tc.classname
+                        \$nm = [string]\$tc.name
+
+                        \$disp = ""
+                        if (\$cn -like 'Test Cases/*') { \$disp = \$cn }
+                        elseif (\$nm -like 'Test Cases/*') { \$disp = \$nm }
+                        elseif (![string]::IsNullOrWhiteSpace(\$cn) -and ![string]::IsNullOrWhiteSpace(\$nm)) { \$disp = "\$cn - \$nm" }
+                        elseif (![string]::IsNullOrWhiteSpace(\$nm)) { \$disp = \$nm }
+                        else { \$disp = \$cn }
+
+                        \$isSkipped = (\$tc.skipped -ne \$null)
+                        \$isFailed  = (\$tc.failure -ne \$null) -or (\$tc.error -ne \$null)
+
+                        \$status = "PASSED"
+                        if (\$isSkipped) { \$status = "SKIPPED" }
+                        if (\$isFailed)  { \$status = "FAILED" }
+
+                        \$msg = ""
+                        if (\$status -eq "FAILED") {
+                          if (\$tc.failure -ne \$null) {
+                            \$msg = [string]\$tc.failure.message
+                            if ([string]::IsNullOrWhiteSpace(\$msg)) { \$msg = [string]\$tc.failure.'#text' }
+                          } elseif (\$tc.error -ne \$null) {
+                            \$msg = [string]\$tc.error.message
+                            if ([string]::IsNullOrWhiteSpace(\$msg)) { \$msg = [string]\$tc.error.'#text' }
+                          }
+                          \$msg = Short50 \$msg
+                          if ([string]::IsNullOrWhiteSpace(\$firstFail) -and ![string]::IsNullOrWhiteSpace(\$msg)) { \$firstFail = \$msg }
+                        }
+
+                        \$cases += [pscustomobject]@{ name=\$disp; status=\$status; msg=\$msg }
+                      }
+                    }
+
+                    \$hasJUnit = (\$cases.Count -gt 0)
+                    \$hasFail  = (\$cases | Where-Object { \$_.status -eq 'FAILED' } | Measure-Object).Count -gt 0
+
+                    \$suiteStatus = "PASSED"
+                    if (\$hasJUnit) {
+                      if (\$hasFail) { \$suiteStatus = "FAILED" }
+                    } else {
+                      if (\$threw -eq 1) { \$suiteStatus = "FAILED" }
+                    }
+
+                    \$suiteIcon = if (\$suiteStatus -eq "PASSED") { "✅" } else { "❌" }
+
+                    \$lines = New-Object System.Collections.Generic.List[string]
+                    \$lines.Add("\$suiteIcon \$suiteName")
+
+                    if (\$hasJUnit) {
+                      foreach (\$c in \$cases) {
+                        \$tcIcon = "✅"
+                        if (\$c.status -eq "SKIPPED") { \$tcIcon = "⚪" }
+                        if (\$c.status -eq "FAILED")  { \$tcIcon = "❌" }
+
+                        \$lines.Add("       \$tcIcon \$([string]\$c.name)")
+
+                        if (\$c.status -eq "FAILED") {
+                          \$m = if (![string]::IsNullOrWhiteSpace(\$c.msg)) { \$c.msg } else { \$firstFail }
+                          if ([string]::IsNullOrWhiteSpace(\$m)) { \$m = \$fallback50 }
+                          if ([string]::IsNullOrWhiteSpace(\$m)) { \$m = "Failure" }
+                          \$lines.Add("       FAIL: \$m")
+                          \$lines.Add("")
+                        }
+                      }
+                      \$lines.Add("")
+                    } else {
+                      if (\$suiteStatus -eq "FAILED") {
+                        \$m = if (![string]::IsNullOrWhiteSpace(\$fallback50)) { \$fallback50 } else { "No JUnit test cases found" }
+                        \$lines.Add("       ❌ No JUnit test cases found")
+                        \$lines.Add("       FAIL: \$m")
+                        \$lines.Add("")
+                      } else {
+                        \$lines.Add("       ✅ No JUnit test cases found")
+                        \$lines.Add("")
+                      }
+                    }
+
+                    Add-Content -Path \$globalFile -Value (\$lines -join \"`n\")
                   """
 
+                  // Always release lock
                   powershell """
                     \$ErrorActionPreference = 'SilentlyContinue'
                     \$lockFile = "C:\\JenkinsLocks\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
@@ -460,10 +297,6 @@ pipeline {
               }
             }
           }
-
-          if (SUITE_RESULTS.any { it.status == 'FAILED' }) {
-            currentBuild.result = 'UNSTABLE'
-          }
         }
       }
     }
@@ -472,66 +305,26 @@ pipeline {
   post {
     always {
       script {
-
-        def lines = []
-        def maxCasesPerSuite = 400
-
-        SUITE_RESULTS.each { r ->
-          def suiteIcon = (r.status == 'PASSED') ? '✅' : '❌'
-          lines << "${suiteIcon} ${r.suite}"
-
-          def cases = (r.cases ?: [])
-          if (cases.size() == 0) {
-            if (r.status == 'PASSED') {
-              lines << "       ✅ No JUnit test cases found"
-            } else {
-              lines << "       ❌ No JUnit test cases found"
-              if (r.failMsg) lines << "       FAIL: ${r.failMsg}"
-            }
-            lines << ""
-          } else {
-            cases.take(maxCasesPerSuite).each { c ->
-              def tcIcon = (c.status == 'PASSED') ? '✅' : ((c.status == 'SKIPPED') ? '⚪' : '❌')
-              lines << "       ${tcIcon} ${c.name}"
-              if (c.status == 'FAILED') {
-                def msg = c.failMsg ?: r.failMsg ?: "Failure"
-                lines << "       FAIL: ${short50(msg)}"
-                lines << ""
-              }
-            }
-            if (cases.size() > maxCasesPerSuite) {
-              lines << "       ... +${cases.size() - maxCasesPerSuite} more"
-              lines << ""
-            } else {
-              lines << ""
-            }
-          }
+        def txt = ""
+        try {
+          txt = readFile("Reports\\_jenkins_summary\\build_description.txt")
+        } catch (ignore) {
+          txt = "❌ No summary file generated"
         }
 
-        currentBuild.description =
-          "<pre style='margin:0; white-space:pre-wrap;'>" +
-          escapeHtml(lines.join("\n")) +
-          "</pre>"
+        def esc = txt.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        currentBuild.description = "<pre style='margin:0; white-space:pre-wrap;'>" + esc + "</pre>"
       }
 
       echo "Pipeline completed"
 
+      // Only this build reports
       archiveArtifacts artifacts: "Reports/**/${env.BUILD_NUMBER}/**/*", allowEmptyArchive: true
 
+      // Jenkins Test Result (if JUnit exists)
       catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
         junit allowEmptyResults: true, testResults: "Reports/**/${env.BUILD_NUMBER}/**/*.xml"
       }
-
-      powershell """
-        \$ErrorActionPreference = 'SilentlyContinue'
-        \$lockFile = "C:\\JenkinsLocks\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
-        try {
-          if (Test-Path \$lockFile) {
-            \$ageHours = ((Get-Date) - (Get-Item \$lockFile).LastWriteTime).TotalHours
-            if (\$ageHours -gt 1) { Remove-Item -Force \$lockFile }
-          }
-        } catch {}
-      """
     }
   }
 }
