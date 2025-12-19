@@ -256,7 +256,7 @@ pipeline {
             currentBuild.result = 'UNSTABLE'
             echo "Suites failed (${failedSuites.size()}): ${failedSuites.join(', ')}"
           } else {
-            echo "All suites PASSED
+            echo "All suites PASSED"
           }
         }
       }
