@@ -2,7 +2,6 @@ import groovy.transform.Field
 import groovy.transform.NonCPS
 
 import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Document
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 
@@ -39,30 +38,30 @@ Map parseJUnitXmlText(String xmlText) {
   try {
     DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance()
     dbf.setNamespaceAware(false)
-    dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-    dbf.setFeature("http://xml.org/sax/features/external-general-entities", false)
-    dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
 
-    Document doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xmlText.getBytes("UTF-8")))
+    try { dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) } catch (ignore) {}
+    try { dbf.setFeature("http://xml.org/sax/features/external-general-entities", false) } catch (ignore) {}
+    try { dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false) } catch (ignore) {}
+
+    def doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xmlText.getBytes("UTF-8")))
     doc.getDocumentElement().normalize()
 
     NodeList testcases = doc.getElementsByTagName("testcase")
+
     for (int i = 0; i < testcases.getLength(); i++) {
       Node tc = testcases.item(i)
       if (tc.getNodeType() != Node.ELEMENT_NODE) continue
 
       def elem = (org.w3c.dom.Element) tc
+
       String classname = elem.getAttribute("classname") ?: ''
       String nameAttr  = elem.getAttribute("name") ?: ''
 
-      String displayName = ''
+      String displayName
       if (classname?.startsWith("Test Cases/")) displayName = classname
       else if (nameAttr?.startsWith("Test Cases/")) displayName = nameAttr
       else if (classname && nameAttr) displayName = "${classname} - ${nameAttr}"
-      else displayName = (nameAttr ?: classname ?: 'unknown_test_case')
-
-      String status = "PASSED"
-      String failMsg = ""
+      else displayName = (nameAttr ?: classname ?: "unknown_test_case")
 
       NodeList skippedNodes = elem.getElementsByTagName("skipped")
       NodeList failureNodes = elem.getElementsByTagName("failure")
@@ -71,9 +70,11 @@ Map parseJUnitXmlText(String xmlText) {
       boolean isSkipped = skippedNodes != null && skippedNodes.getLength() > 0
       boolean isFailed  = (failureNodes != null && failureNodes.getLength() > 0) || (errorNodes != null && errorNodes.getLength() > 0)
 
+      String status = "PASSED"
       if (isSkipped) status = "SKIPPED"
       if (isFailed)  status = "FAILED"
 
+      String failMsg = ""
       if (status == "FAILED") {
         Node n = null
         if (failureNodes != null && failureNodes.getLength() > 0) n = failureNodes.item(0)
@@ -97,7 +98,6 @@ Map parseJUnitXmlText(String xmlText) {
 
     out.passed = Math.max(0, out.total - out.failed - out.skipped)
     return out
-
   } catch (Throwable ignore) {
     return out
   }
@@ -169,8 +169,7 @@ pipeline {
             [name: 'OPS_AFTER_REFRESH',          path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
-          def failedSuites = []
-          def projectPath  = "${env.WORKSPACE}\\${env.PROJECT_FILE}"
+          def projectPath = "${env.WORKSPACE}\\${env.PROJECT_FILE}"
 
           def listXmlRelatives = { String dir ->
             def ps = """
@@ -189,6 +188,7 @@ pipeline {
 
           def collectSuiteFromDir = { String reportDir ->
             def files = listXmlRelatives(reportDir)
+
             def agg = [total: 0, passed: 0, failed: 0, skipped: 0, cases: [], firstFailMsg: '']
 
             files.each { f ->
@@ -220,15 +220,17 @@ pipeline {
           }
 
           for (def s : suites) {
+
             stage("Suite ${s.name}") {
+
               echo "Running suite: ${s.name}"
 
               def reportDir = "${env.WORKSPACE}\\Reports\\${s.name}\\${env.BUILD_NUMBER}"
               bat "if not exist \"${reportDir}\" mkdir \"${reportDir}\""
 
-              def lockDir         = "C:\\JenkinsLocks"
-              def lockFile        = "${lockDir}\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
-              def staleLockHours  = 12
+              def lockDir        = "C:\\JenkinsLocks"
+              def lockFile       = "${lockDir}\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
+              def staleLockHours = 12
 
               def suiteStatus  = 'UNKNOWN'
               def suiteErrText = ''
@@ -299,7 +301,7 @@ pipeline {
 
                     while (attempt <= maxAttempts) {
 
-                      def katalonThrew = false
+                      boolean katalonThrew = false
 
                       try {
                         echo "Katalon attempt ${attempt}/${maxAttempts} for suite ${s.name}"
@@ -326,14 +328,12 @@ pipeline {
 
                       def parsedNow = collectSuiteFromDir(reportDir)
 
-                      // ✅ If JUnit exists, SUITE STATUS comes only from test case results
                       if (parsedNow.total > 0) {
                         suiteStatus = (parsedNow.failed > 0) ? 'FAILED' : 'PASSED'
                         suiteErrText = (suiteStatus == 'FAILED') ? (parsedNow.firstFailMsg ?: "One or more test cases failed") : ''
                         break
                       }
 
-                      // No JUnit found yet, fallback to katalon exception with infra retry
                       if (!katalonThrew) {
                         suiteStatus = 'PASSED'
                         break
@@ -394,7 +394,6 @@ pipeline {
                       break
                     }
 
-                    // Mark stage failed but continue pipeline
                     if (suiteStatus == 'FAILED') {
                       error("Suite FAILED: ${s.name}")
                     }
@@ -404,16 +403,11 @@ pipeline {
 
                   def parsedFinal = collectSuiteFromDir(reportDir)
 
-                  // Final status decision
                   if (parsedFinal.total > 0) {
                     suiteStatus = (parsedFinal.failed > 0) ? 'FAILED' : 'PASSED'
                     if (suiteStatus == 'FAILED') suiteErrText = parsedFinal.firstFailMsg ?: suiteErrText
                   } else {
                     if (suiteStatus == 'UNKNOWN') suiteStatus = 'FAILED'
-                  }
-
-                  if (suiteStatus == 'FAILED') {
-                    if (!failedSuites.contains(s.name)) failedSuites << s.name
                   }
 
                   SUITE_RESULTS << [
@@ -428,7 +422,6 @@ pipeline {
                     failMsg : short50(suiteErrText)
                   ]
 
-                  // Post-clean
                   powershell """
                     \$ErrorActionPreference = 'SilentlyContinue'
                     \$proj  = '${projectPath}'
@@ -479,7 +472,7 @@ pipeline {
   post {
     always {
       script {
-        // Build main screen summary
+
         def lines = []
         def maxCasesPerSuite = 400
 
@@ -501,7 +494,7 @@ pipeline {
               def tcIcon = (c.status == 'PASSED') ? '✅' : ((c.status == 'SKIPPED') ? '⚪' : '❌')
               lines << "       ${tcIcon} ${c.name}"
               if (c.status == 'FAILED') {
-                def msg = c.failMsg ?: r.failMsg ?: 'Failure'
+                def msg = c.failMsg ?: r.failMsg ?: "Failure"
                 lines << "       FAIL: ${short50(msg)}"
                 lines << ""
               }
@@ -515,22 +508,20 @@ pipeline {
           }
         }
 
-        currentBuild.description = "<pre style='margin:0; white-space:pre-wrap;'>" +
-                                   escapeHtml(lines.join("\n")) +
-                                   "</pre>"
+        currentBuild.description =
+          "<pre style='margin:0; white-space:pre-wrap;'>" +
+          escapeHtml(lines.join("\n")) +
+          "</pre>"
       }
 
       echo "Pipeline completed"
 
-      // Archive ONLY current build reports
       archiveArtifacts artifacts: "Reports/**/${env.BUILD_NUMBER}/**/*", allowEmptyArchive: true
 
-      // Publish JUnit (if compatible)
       catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
         junit allowEmptyResults: true, testResults: "Reports/**/${env.BUILD_NUMBER}/**/*.xml"
       }
 
-      // Extra safety: remove stale lock if it survived
       powershell """
         \$ErrorActionPreference = 'SilentlyContinue'
         \$lockFile = "C:\\JenkinsLocks\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
@@ -544,5 +535,3 @@ pipeline {
     }
   }
 }
-
-test
