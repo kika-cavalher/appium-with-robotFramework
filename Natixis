@@ -19,7 +19,6 @@ pipeline {
     stage('Prepare Reports') {
       steps {
         script {
-          // Ensures only THIS execution reports exist in workspace
           bat """
             if exist "Reports" rmdir /s /q "Reports"
             mkdir "Reports"
@@ -33,43 +32,41 @@ pipeline {
         script {
 
           // ----------------------------
-          // Helpers for report parsing
+          // Helpers
           // ----------------------------
 
-          def safe2Lines = { String txt ->
+          def short50 = { String txt ->
             if (!txt) return ''
-            def cleaned = txt.replace('\r', '\n')
+            def oneLine = txt.replace('\r', '\n')
                              .split('\n')
                              .collect { it?.trim() }
                              .findAll { it }
-            if (cleaned.size() == 0) return ''
-            if (cleaned.size() == 1) return cleaned[0]
-            return cleaned[0] + "\n" + cleaned[1]
+                             .join(' ')
+                             .trim()
+            if (!oneLine) return ''
+            if (oneLine.length() > 50) return oneLine.substring(0, 50)
+            return oneLine
           }
 
-          def findFirstXmlRelative = { String dir ->
+          def listXmlRelatives = { String dir ->
             def ps = """
               \$ErrorActionPreference = 'SilentlyContinue'
               \$root = (Get-Location).Path
-              \$f = Get-ChildItem -Path '${dir}' -Recurse -Filter '*.xml' | Select-Object -First 1
-              if (\$null -eq \$f) { '' }
-              else {
-                \$full = \$f.FullName
+              if (!(Test-Path '${dir}')) { return }
+              Get-ChildItem -Path '${dir}' -Recurse -Filter '*.xml' | ForEach-Object {
+                \$full = \$_.FullName
                 if (\$full.StartsWith(\$root)) { \$full.Substring(\$root.Length + 1) } else { \$full }
               }
             """
-            return powershell(returnStdout: true, script: ps).trim()
+            def out = powershell(returnStdout: true, script: ps).trim()
+            if (!out) return []
+            return out.split('\n').collect { it.trim() }.findAll { it }
           }
 
-          def parseJUnitLikeXml = { String xmlText ->
+          def parseJUnitXmlText = { String xmlText ->
             def out = [
-              total      : 0,
-              failed     : 0,
-              skipped    : 0,
-              passed     : 0,
-              testCases  : [],
-              failedCases: [],
-              errorShort : ''
+              total: 0, passed: 0, failed: 0, skipped: 0,
+              cases: []
             ]
 
             if (!xmlText?.trim()) return out
@@ -81,70 +78,100 @@ pipeline {
               return out
             }
 
-            def suiteNodes = []
             def rootName = xml.name()
+            def suiteNodes = []
 
             if (rootName == 'testsuite') {
               suiteNodes = [xml]
             } else if (rootName == 'testsuites') {
               suiteNodes = xml.testsuite
             } else {
-              // Unknown format
               return out
             }
 
-            def firstFailureText = ''
-            def total = 0
-            def failed = 0
-            def skipped = 0
-
             suiteNodes.each { ts ->
-              def tcNodes = ts.testcase
-              tcNodes.each { tc ->
-                def tcName = ''
+              ts.testcase.each { tc ->
                 def cn = tc.@classname?.text()
                 def nm = tc.@name?.text()
-                if (cn && nm) tcName = "${cn}.${nm}"
-                else if (nm)  tcName = nm
-                else          tcName = 'unknown_test_case'
+                def tcName = (cn && nm) ? "${cn}.${nm}" : (nm ?: 'unknown_test_case')
 
-                out.testCases << tcName
-                total++
+                def hasSkipped = (tc.skipped && tc.skipped.size() > 0)
+                def hasFail    = (tc.failure && tc.failure.size() > 0)
+                def hasErr     = (tc.error   && tc.error.size() > 0)
 
-                def failureNode = tc.failure
-                def errorNode   = tc.error
-                def skippedNode = tc.skipped
+                def status = 'PASSED'
+                if (hasSkipped) status = 'SKIPPED'
+                if (hasFail || hasErr) status = 'FAILED'
 
-                if (skippedNode && skippedNode.size() > 0) {
-                  skipped++
-                } else if ((failureNode && failureNode.size() > 0) || (errorNode && errorNode.size() > 0)) {
-                  failed++
-                  out.failedCases << tcName
-
-                  if (!firstFailureText) {
-                    def msg = ''
-                    if (failureNode && failureNode.size() > 0) msg = failureNode.text()
-                    else if (errorNode && errorNode.size() > 0) msg = errorNode.text()
-                    firstFailureText = msg?.trim()
+                def failMsg = ''
+                if (status == 'FAILED') {
+                  if (hasFail) {
+                    def m1 = tc.failure.@message?.text()
+                    def m2 = tc.failure.text()
+                    failMsg = short50(m1 ?: m2)
+                  } else if (hasErr) {
+                    def m1 = tc.error.@message?.text()
+                    def m2 = tc.error.text()
+                    failMsg = short50(m1 ?: m2)
                   }
                 }
+
+                out.cases << [name: tcName, status: status, failMsg: failMsg]
+                out.total++
+
+                if (status == 'SKIPPED') out.skipped++
+                if (status == 'FAILED')  out.failed++
               }
             }
 
-            out.total   = total
-            out.failed  = failed
-            out.skipped = skipped
-            out.passed  = Math.max(0, total - failed - skipped)
-            out.errorShort = safe2Lines(firstFailureText)
-
+            out.passed = Math.max(0, out.total - out.failed - out.skipped)
             return out
           }
 
-          def suiteResults = []   // list of maps for Jenkins main screen summary
+          def collectSuiteResultsFromDir = { String reportDir ->
+            def files = listXmlRelatives(reportDir)
+
+            def agg = [
+              total: 0, passed: 0, failed: 0, skipped: 0,
+              cases: []
+            ]
+
+            files.each { f ->
+              def t = ''
+              try { t = readFile(file: f) } catch (ignore) { t = '' }
+
+              def p = parseJUnitXmlText(t)
+              if (p.total > 0) {
+                agg.total   += p.total
+                agg.passed  += p.passed
+                agg.failed  += p.failed
+                agg.skipped += p.skipped
+                agg.cases.addAll(p.cases)
+              }
+            }
+
+            def seen = [:]
+            def dedup = []
+            agg.cases.each { c ->
+              if (!seen.containsKey(c.name)) {
+                seen[c.name] = true
+                dedup << c
+              }
+            }
+            agg.cases = dedup
+
+            return agg
+          }
+
+          def escapeHtml = { String s ->
+            if (s == null) return ''
+            return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+          }
 
           // ----------------------------
           // Suites
           // ----------------------------
+
           def suites = [
             [name: 'LOGIN',                      path: 'Test Suites/LOGIN_GENERIC/login_suite'],
             [name: 'CATALOGS',                   path: 'Test Suites/CATALOGS/catalogs_suite'],
@@ -177,11 +204,15 @@ pipeline {
             [name: 'OPS_AFTER_REFRESH',          path: 'Test Suites/OPS_AUTOMATION/afterRefreshEnvoirment']
           ]
 
+          def suiteResults = []
           def failedSuites = []
+
           def projectPath  = "${env.WORKSPACE}\\${env.PROJECT_FILE}"
 
           for (def s : suites) {
+
             stage("Suite ${s.name}") {
+
               echo "Running suite: ${s.name}"
 
               def reportDir = "Reports\\${s.name}\\${env.BUILD_NUMBER}"
@@ -191,11 +222,13 @@ pipeline {
               def lockFile        = "${lockDir}\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
               def staleLockHours  = 12
 
-              def suiteStatus     = 'PASSED'
-              def suiteErrText    = ''
+              def suiteStatus  = 'UNKNOWN'
+              def suiteErrText = ''
 
               catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+
                 try {
+
                   timeout(time: 110, unit: 'MINUTES') {
 
                     // One Katalon at a time (node-wide) + stale lock recovery
@@ -206,9 +239,7 @@ pipeline {
                       if (Test-Path '${lockFile}') {
                         try {
                           \$ageHours = ((Get-Date) - (Get-Item '${lockFile}').LastWriteTime).TotalHours
-                          if (\$ageHours -gt ${staleLockHours}) {
-                            Remove-Item -Force '${lockFile}'
-                          }
+                          if (\$ageHours -gt ${staleLockHours}) { Remove-Item -Force '${lockFile}' }
                         } catch {}
                       }
 
@@ -230,7 +261,7 @@ pipeline {
                       }
                     """
 
-                    // Pre-clean: remove leftovers ONLY tied to this project (prevents session leakage)
+                    // Pre-clean: remove leftovers ONLY tied to this project
                     powershell """
                       \$ErrorActionPreference = 'SilentlyContinue'
                       \$proj = '${projectPath}'
@@ -247,7 +278,9 @@ pipeline {
                       \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
 
                       \$browsers = \$all | Where-Object {
-                        (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and ( (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId) )
+                        (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and (
+                          (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId)
+                        )
                       }
 
                       if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
@@ -255,13 +288,14 @@ pipeline {
                       if (\$katalon)  { \$katalon  | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
                     """
 
-                    // Run Katalon with infra-safe retry (only for known flaky infrastructure errors)
                     def attempt = 1
                     def maxAttempts = 2
                     def lastErrText = ''
 
                     while (attempt <= maxAttempts) {
+
                       try {
+
                         echo "Katalon attempt ${attempt}/${maxAttempts} for suite ${s.name}"
 
                         executeKatalon(
@@ -279,10 +313,22 @@ pipeline {
                           xvfbConfiguration: ''
                         )
 
-                        echo "Suite PASSED: ${s.name}"
-                        suiteStatus = 'PASSED'
+                        // Decide suite status from test cases
+                        def parsedNow = collectSuiteResultsFromDir(reportDir)
+
+                        if (parsedNow.total > 0 && parsedNow.failed > 0) {
+                          suiteStatus  = 'FAILED'
+                          suiteErrText = "One or more test cases failed"
+                          echo "Suite FAILED by test cases: ${s.name} | failed=${parsedNow.failed}/${parsedNow.total}"
+                        } else {
+                          suiteStatus = 'PASSED'
+                          echo "Suite PASSED: ${s.name}"
+                        }
+
                         break
+
                       } catch (err) {
+
                         lastErrText = "${err}"
                         def errLower = lastErrText.toLowerCase()
 
@@ -302,7 +348,7 @@ pipeline {
 
                         echo "Suite error on attempt ${attempt}: ${lastErrText}"
 
-                        // Always cleanup between attempts, but only for this project
+                        // Cleanup between attempts for this project only
                         powershell """
                           \$ErrorActionPreference = 'SilentlyContinue'
                           \$proj = '${projectPath}'
@@ -319,7 +365,9 @@ pipeline {
                           \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
 
                           \$browsers = \$all | Where-Object {
-                            (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and ( (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId) )
+                            (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and (
+                              (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId)
+                            )
                           }
 
                           if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
@@ -338,54 +386,43 @@ pipeline {
                       }
                     }
                   }
+
                 } catch (errFinal) {
+
                   suiteStatus  = 'FAILED'
                   suiteErrText = "${errFinal}"
 
-                  failedSuites << s.name
                   echo "Suite FAILED: ${s.name}"
                   echo "Final error: ${errFinal}"
                   error("Failing stage but continuing pipeline")
+
                 } finally {
 
-                  // Try to parse report XML for suite/test case info
-                  def xmlRel = findFirstXmlRelative(reportDir)
-                  def parsed = [total: 0, passed: 0, failed: 0, skipped: 0, testCases: [], failedCases: [], errorShort: '']
+                  // Always parse reports for accurate suite status
+                  def parsed = collectSuiteResultsFromDir(reportDir)
 
-                  if (xmlRel) {
-                    try {
-                      def xmlText = readFile(file: xmlRel)
-                      parsed = parseJUnitLikeXml(xmlText)
-                    } catch (ignore) { }
+                  if (suiteStatus == 'PASSED' && parsed.total > 0 && parsed.failed > 0) {
+                    suiteStatus  = 'FAILED'
+                    suiteErrText = "One or more test cases failed"
                   }
 
-                  def finalErrorShort = ''
                   if (suiteStatus != 'PASSED') {
-                    if (parsed?.errorShort) finalErrorShort = parsed.errorShort
-                    else finalErrorShort = safe2Lines(suiteErrText)
+                    if (!failedSuites.contains(s.name)) failedSuites << s.name
                   }
 
-                  // Store results for Jenkins main screen description
                   suiteResults << [
-                    suite      : s.name,
-                    path       : s.path,
-                    status     : suiteStatus,
-                    total      : parsed.total,
-                    passed     : parsed.passed,
-                    failed     : parsed.failed,
-                    skipped    : parsed.skipped,
-                    errorShort : finalErrorShort,
-                    failedCases: parsed.failedCases,
-                    testCases  : parsed.testCases,
-                    reportDir  : reportDir
+                    suite     : s.name,
+                    path      : s.path,
+                    status    : suiteStatus,
+                    total     : parsed.total,
+                    passed    : parsed.passed,
+                    failed    : parsed.failed,
+                    skipped   : parsed.skipped,
+                    cases     : parsed.cases,
+                    fallback  : short50(suiteErrText)
                   ]
 
-                  // Console output (full test case list if available)
-                  if (parsed?.testCases && parsed.testCases.size() > 0) {
-                    echo "Test cases executed in ${s.name} (${parsed.testCases.size()}):\n" + parsed.testCases.join('\n')
-                  }
-
-                  // Post-clean: kill ONLY processes tied to this project and this suite path (extra safety)
+                  // Post-clean: kill ONLY processes tied to this project and this suite path
                   powershell """
                     \$ErrorActionPreference = 'SilentlyContinue'
                     \$proj  = '${projectPath}'
@@ -405,7 +442,9 @@ pipeline {
                     \$driverPids = @(\$drivers | Select-Object -ExpandProperty ProcessId)
 
                     \$browsers = \$all | Where-Object {
-                      (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and ( (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId) )
+                      (\$_.Name -in @('chrome.exe','msedge.exe','firefox.exe')) -and (
+                        (\$katalonPids -contains \$_.ParentProcessId) -or (\$driverPids -contains \$_.ParentProcessId)
+                      )
                     }
 
                     if (\$browsers) { \$browsers | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force } catch {} } }
@@ -424,38 +463,54 @@ pipeline {
           }
 
           // ----------------------------
-          // Build main screen summary
+          // Jenkins main screen summary
           // ----------------------------
 
-          def lines = []
-          lines << "<b>Suites:</b> ${suiteResults.size()}<br/>"
+          def summaryLines = []
 
           suiteResults.each { r ->
-            def icon = (r.status == 'PASSED') ? '✅' : '❌'
-            def counts = (r.total && r.total > 0) ? " | ${r.passed}/${r.total} passed" : ""
-            def failCnt = (r.failed && r.failed > 0) ? " | ${r.failed} failed" : ""
-            def skipCnt = (r.skipped && r.skipped > 0) ? " | ${r.skipped} skipped" : ""
 
-            lines << "${icon} <b>${r.suite}</b>${counts}${failCnt}${skipCnt}<br/>"
+            def suiteIcon = (r.status == 'PASSED') ? '✅' : '❌'
+            def suiteHeader = "${suiteIcon} ${r.suite}"
 
-            if (r.status != 'PASSED' && r.errorShort) {
-              def esc = r.errorShort.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-              lines << "<pre style='margin:0; white-space:pre-wrap;'>${esc}</pre>"
+            summaryLines << suiteHeader
+
+            if (r.cases && r.cases.size() > 0) {
+
+              r.cases.each { c ->
+                def tcIcon = (c.status == 'PASSED') ? '✅' : ((c.status == 'SKIPPED') ? '⚪' : '❌')
+
+                summaryLines << "       ${tcIcon} ${c.name}"
+
+                if (c.status == 'FAILED') {
+                  def msg = c.failMsg ?: r.fallback ?: 'Failure'
+                  summaryLines << "       FAIL: ${msg}"
+                  summaryLines << ""
+                }
+              }
+
+            } else {
+
+              if (r.status != 'PASSED') {
+                def msg = r.fallback ?: 'Failure'
+                summaryLines << "       ❌ No JUnit test cases found"
+                summaryLines << "       FAIL: ${msg}"
+              } else {
+                summaryLines << "       ✅ No JUnit test cases found"
+              }
             }
 
-            if (r.failedCases && r.failedCases.size() > 0) {
-              def shown = r.failedCases.take(5).collect { it.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;') }
-              lines << "<b>Failed TCs:</b> ${shown.join(', ')}"
-              if (r.failedCases.size() > 5) { lines << " (+${r.failedCases.size() - 5})" }
-              lines << "<br/>"
-            }
+            summaryLines << ""
           }
 
-          currentBuild.description = lines.join('')
+          currentBuild.description = "<pre style='margin:0; white-space:pre-wrap;'>" +
+                                     escapeHtml(summaryLines.join("\n")) +
+                                     "</pre>"
 
           // ----------------------------
-          // Final status
+          // Final build result
           // ----------------------------
+
           if (failedSuites.size() > 0) {
             currentBuild.result = 'UNSTABLE'
             echo "Suites failed (${failedSuites.size()}): ${failedSuites.join(', ')}"
@@ -474,12 +529,12 @@ pipeline {
       // Archive ONLY current build reports
       archiveArtifacts artifacts: "Reports/**/${env.BUILD_NUMBER}/**/*", allowEmptyArchive: true
 
-      // Publish JUnit if the XMLs are in JUnit format (safe wrapper)
+      // Publish JUnit if XMLs are compatible
       catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
         junit allowEmptyResults: true, testResults: "Reports/**/${env.BUILD_NUMBER}/**/*.xml"
       }
 
-      // Extra safety: remove stale lock if it survived (never kills any process here)
+      // Extra safety: remove stale lock if it survived
       powershell """
         \$ErrorActionPreference = 'SilentlyContinue'
         \$lockFile = "C:\\JenkinsLocks\\KATALON_ONE_AT_A_TIME_${env.NODE_NAME}.lock"
