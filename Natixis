@@ -79,7 +79,7 @@ pipeline {
               def staleLockHours = 12
 
               def katalonThrew = false
-              def katalonErr50 = ""
+              def katalonErr250 = ""
 
               catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                 try {
@@ -160,19 +160,20 @@ pipeline {
                       )
                     } catch (err) {
                       katalonThrew = true
-                      def t = "${err}".replace("\r", "\n").split("\n")[0]?.trim()
-                      if (t == null) t = "${err}"
-                      t = t.replaceAll("\\s+", " ").trim()
-                      if (t.length() > 50) t = t.substring(0, 50)
-                      katalonErr50 = t
+                      def raw = "${err}".replace("\r", "\n")
+                      def one = raw.split("\n")[0]?.trim()
+                      if (one == null) one = raw
+                      one = one.replaceAll("\\s+", " ").trim()
+                      if (one.length() > 250) one = one.substring(0, 250)
+                      katalonErr250 = one
                     }
 
                   }
                 } finally {
 
-                  // Build suite summary from JUnit XML (PowerShell only)
+                  // Suite summary from JUnit XML (PowerShell only)
                   def threwVal = katalonThrew ? "1" : "0"
-                  def errVal   = (katalonErr50 ?: "").replace("'", "''")
+                  def errVal   = (katalonErr250 ?: "").replace("'", "''")
 
                   powershell """
                     \$ErrorActionPreference = 'SilentlyContinue'
@@ -180,13 +181,13 @@ pipeline {
                     \$reportDir  = '${reportDir}'
                     \$suiteName  = '${s.name}'
                     \$threw      = ${threwVal}
-                    \$fallback50 = '${errVal}'
+                    \$fallback   = '${errVal}'
                     \$globalFile = '${env.WORKSPACE}\\\\Reports\\\\_jenkins_summary\\\\build_description.txt'
 
-                    function Short50([string]\$x) {
+                    function ShortN([string]\$x, [int]\$n) {
                       if ([string]::IsNullOrWhiteSpace(\$x)) { return "" }
                       \$t = (\$x -replace '\\s+', ' ').Trim()
-                      if (\$t.Length -gt 50) { return \$t.Substring(0,50) }
+                      if (\$t.Length -gt \$n) { return \$t.Substring(0,\$n) }
                       return \$t
                     }
 
@@ -232,7 +233,7 @@ pipeline {
                             \$msg = [string]\$tc.error.message
                             if ([string]::IsNullOrWhiteSpace(\$msg)) { \$msg = [string]\$tc.error.'#text' }
                           }
-                          \$msg = Short50 \$msg
+                          \$msg = ShortN \$msg 250
                           if ([string]::IsNullOrWhiteSpace(\$firstFail) -and ![string]::IsNullOrWhiteSpace(\$msg)) { \$firstFail = \$msg }
                         }
 
@@ -250,23 +251,26 @@ pipeline {
                       if (\$threw -eq 1) { \$suiteStatus = "FAILED" }
                     }
 
-                    \$suiteIcon = if (\$suiteStatus -eq "PASSED") { "✅" } else { "❌" }
+                    \$suiteMark = if (\$suiteStatus -eq "PASSED") { "OK" } else { "X" }
 
                     \$lines = New-Object System.Collections.Generic.List[string]
-                    \$lines.Add("\$suiteIcon \$suiteName")
+                    \$lines.Add("\$suiteMark \$suiteName")
 
                     if (\$hasJUnit) {
                       foreach (\$c in \$cases) {
-                        \$tcIcon = "✅"
-                        if (\$c.status -eq "SKIPPED") { \$tcIcon = "⚪" }
-                        if (\$c.status -eq "FAILED")  { \$tcIcon = "❌" }
+                        \$tcMark = "OK"
+                        if (\$c.status -eq "SKIPPED") { \$tcMark = "SKIP" }
+                        if (\$c.status -eq "FAILED")  { \$tcMark = "X" }
 
-                        \$lines.Add("       \$tcIcon \$([string]\$c.name)")
+                        \$lines.Add("       \$tcMark \$([string]\$c.name)")
 
                         if (\$c.status -eq "FAILED") {
-                          \$m = if (![string]::IsNullOrWhiteSpace(\$c.msg)) { \$c.msg } else { \$firstFail }
-                          if ([string]::IsNullOrWhiteSpace(\$m)) { \$m = \$fallback50 }
-                          if ([string]::IsNullOrWhiteSpace(\$m)) { \$m = "Failure" }
+                          \$m = ""
+                          if (![string]::IsNullOrWhiteSpace(\$c.msg)) { \$m = \$c.msg }
+                          elseif (![string]::IsNullOrWhiteSpace(\$firstFail)) { \$m = \$firstFail }
+                          elseif (![string]::IsNullOrWhiteSpace(\$fallback)) { \$m = \$fallback }
+                          else { \$m = "Failure" }
+
                           \$lines.Add("       FAIL: \$m")
                           \$lines.Add("")
                         }
@@ -274,12 +278,12 @@ pipeline {
                       \$lines.Add("")
                     } else {
                       if (\$suiteStatus -eq "FAILED") {
-                        \$m = if (![string]::IsNullOrWhiteSpace(\$fallback50)) { \$fallback50 } else { "No JUnit test cases found" }
-                        \$lines.Add("       ❌ No JUnit test cases found")
+                        \$m = if (![string]::IsNullOrWhiteSpace(\$fallback)) { \$fallback } else { "No JUnit test cases found" }
+                        \$lines.Add("       X No JUnit test cases found")
                         \$lines.Add("       FAIL: \$m")
                         \$lines.Add("")
                       } else {
-                        \$lines.Add("       ✅ No JUnit test cases found")
+                        \$lines.Add("       OK No JUnit test cases found")
                         \$lines.Add("")
                       }
                     }
@@ -309,7 +313,7 @@ pipeline {
         try {
           txt = readFile("Reports\\_jenkins_summary\\build_description.txt")
         } catch (ignore) {
-          txt = "❌ No summary file generated"
+          txt = "X No summary file generated"
         }
 
         def esc = txt.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -318,10 +322,8 @@ pipeline {
 
       echo "Pipeline completed"
 
-      // Only this build reports
       archiveArtifacts artifacts: "Reports/**/${env.BUILD_NUMBER}/**/*", allowEmptyArchive: true
 
-      // Jenkins Test Result (if JUnit exists)
       catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
         junit allowEmptyResults: true, testResults: "Reports/**/${env.BUILD_NUMBER}/**/*.xml"
       }
